@@ -661,7 +661,10 @@ function renderInventarioResultado(rows){
   '</div>';
 
   if (naoContados.length){
-    html += `<div class="ins y"><b>⚠ ${naoContados.length} SKU(s) cadastrados não foram contados fisicamente</b> (marcados pelo sistema como "NÃO CONTADO FISICAMENTE").</div>`;
+    const itens = naoContados.map(r => `${r['SKU']||'(sem SKU)'} — ${r['PRODUTO']||''} ${r['COR']||''} ${r['TAMANHO']||''}`.trim());
+    const limite = 20;
+    const listaSkus = itens.slice(0, limite).join('; ') + (itens.length>limite ? ` … e mais ${itens.length-limite} (veja a lista completa na tabela abaixo, filtrando por Colaborador = SISTEMA)` : '');
+    html += `<div class="ins y"><b>⚠ ${naoContados.length} SKU(s) não localizado(s) na contagem física:</b> ${listaSkus}</div>`;
   }
   if (duplicatas){
     html += `<div class="ins b"><b>ℹ ${duplicatas} possível(is) lançamento(s) duplicado(s)</b> — mesmo SKU, localização, quantidade e conferente registrados mais de uma vez.</div>`;
