@@ -80,6 +80,8 @@ body{font-family:'Segoe UI',-apple-system,sans-serif;background:var(--bg);color:
 .kpi{background:white;border-radius:10px;padding:14px 15px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-top:3px solid var(--roxo)}
 .kpi.g{border-top-color:var(--ok)}.kpi.o{border-top-color:#ea580c}.kpi.r{border-top-color:var(--bad)}.kpi.b{border-top-color:var(--blue)}
 .kv{font-size:22px;font-weight:900}.kl{font-size:10px;color:var(--txt-s);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.kp{font-size:11px;font-weight:700;margin-top:3px}
+.kpi.g .kp{color:#16a34a}.kpi.o .kp{color:#ea580c}.kpi.r .kp{color:#dc2626}.kpi.b .kp{color:#0369a1}
 
 /* CARDS */
 .card{background:#fff;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:14px}
@@ -113,6 +115,24 @@ tr:hover td{background:#faf9ff}
 
 /* PLACEHOLDER */
 .placeholder{background:#fff;border-radius:14px;padding:60px 30px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+
+/* BLOCOS DE CLASSIFICAÇÃO POR PRAZO */
+.blocos{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.bloco{background:white;border-radius:9px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.bi{font-size:18px;width:28px;text-align:center;flex-shrink:0}
+.binfo{flex:1}.bt{font-size:12px;font-weight:800}.bd{font-size:10.5px;color:var(--txt-s);margin-top:1px}
+.bbar{flex:2;height:8px;background:#f3f4f6;border-radius:5px;overflow:hidden}
+.bfill{height:100%;border-radius:5px}
+.bnum{text-align:right;min-width:72px;flex-shrink:0}
+.bn{font-size:15px;font-weight:900}.bp{font-size:10px;color:var(--txt-s);font-weight:600}
+.platgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px}
+.platcard{background:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+
+.bloco.clicavel{cursor:pointer;transition:transform .1s}
+.bloco.clicavel:hover{transform:translateX(2px);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.modal-overlay{position:fixed;inset:0;background:rgba(30,27,75,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:#fff;border-radius:14px;padding:20px;max-width:900px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--roxo-cl);padding-bottom:10px}
 .placeholder .icon{font-size:40px;margin-bottom:12px}
 .placeholder h3{font-size:16px;font-weight:800;margin-bottom:6px}
 .placeholder p{font-size:12.5px;color:var(--txt-s);max-width:420px;margin:0 auto}
@@ -121,6 +141,8 @@ tr:hover td{background:#faf9ff}
 .ins{border-radius:8px;padding:12px 14px;margin-top:8px;font-size:12.5px;line-height:1.6}
 .ins.y{background:var(--warn-bg);border-left:4px solid #f59e0b}
 .ins.b{background:var(--blue-bg);border-left:4px solid #2563eb}
+.ins.g{background:var(--ok-bg);border-left:4px solid #16a34a}
+.ins.r{background:var(--bad-bg);border-left:4px solid #dc2626}
 .empty-state{text-align:center;padding:40px;color:var(--txt-s);font-size:13px}
 
 @media print{
@@ -156,15 +178,40 @@ tr:hover td{background:#faf9ff}
   <div id="brindes-result" style="display:none"></div>
 </div>
 
-<!-- ===================== ABA 2 · PRAZO (placeholder) ===================== -->
+<!-- ===================== ABA 2 · PRAZO / EXPEDIÇÃO ===================== -->
 <div class="page" id="page-prazo">
   <div class="page-title">Eficiência de Atendimento · Expedição</div>
-  <div class="page-sub">Reproduz o modelo de análise de prazo de atendimento.</div>
-  <div class="placeholder">
-    <div class="tag-soon">Em construção</div>
-    <div class="icon">⏱️</div>
-    <h3>Próxima etapa deste projeto</h3>
-    <p>Essa aba vai reproduzir o motor de cálculo da análise de prazo de atendimento (fila, tempo de embalagem, causas de atraso, plano de ação) direto a partir dos arquivos que você anexar aqui. Ainda precisamos validar juntos as regras exatas de cálculo antes de deixar isso automático.</p>
+  <div class="page-sub">Boxlink (Nuvemshop) usa o PV03. Marketplace (Tiny) usa o relatório de vendas + o relatório de expedição.</div>
+
+  <div style="display:flex;gap:10px;margin-bottom:16px">
+    <button class="tab-btn active" style="background:#fff;border-radius:8px 8px 0 0" onclick="showPrazoSub('boxlink')">🌐 Boxlink</button>
+    <button class="tab-btn" style="background:#fff;border-radius:8px 8px 0 0" onclick="showPrazoSub('market')">🛒 Marketplace</button>
+  </div>
+
+  <div id="prazo-sub-boxlink" class="prazo-sub">
+    <div class="upload-box" id="pv03-dropzone">
+      <label class="upload-label" for="pv03-file">📁 Escolher relatório PV03 (.xlsx)</label>
+      <input type="file" id="pv03-file" accept=".xlsx,.xls">
+      <div class="upload-hint">Colunas: Status, Data, Pedidovenda, Data conferido...</div>
+      <div class="upload-filename" id="pv03-filename"></div>
+    </div>
+    <div id="boxlink-result" style="display:none"></div>
+  </div>
+
+  <div id="prazo-sub-market" class="prazo-sub" style="display:none">
+    <div class="upload-box" id="tiny-vendas-dropzone">
+      <label class="upload-label" for="tiny-vendas-file">📁 Escolher relatório de vendas do Tiny (.xlsx)</label>
+      <input type="file" id="tiny-vendas-file" accept=".xlsx,.xls">
+      <div class="upload-hint">Colunas: Situação da venda, Data da venda, Forma de envio, Número (Nota Fiscal)...</div>
+      <div class="upload-filename" id="tiny-vendas-filename"></div>
+    </div>
+    <div class="upload-box" id="tiny-exp-dropzone">
+      <label class="upload-label" for="tiny-exp-file">📁 Escolher relatório de expedição do Tiny (.xlsx)</label>
+      <input type="file" id="tiny-exp-file" accept=".xlsx,.xls">
+      <div class="upload-hint">Colunas: Pedidos (Nota XXXXX), Início, Término...</div>
+      <div class="upload-filename" id="tiny-exp-filename"></div>
+    </div>
+    <div id="market-result" style="display:none"></div>
   </div>
 </div>
 
@@ -432,8 +479,8 @@ function renderBrindesResultado(dados, semTamanho, totalPedidosArquivo){
   renderLinhasBrindes(dados);
 }
 
-function kpi(cls, val, label){
-  return `<div class="kpi ${cls}"><div class="kv">${val}</div><div class="kl">${label}</div></div>`;
+function kpi(cls, val, label, sub){
+  return `<div class="kpi ${cls}"><div class="kv">${val}</div><div class="kl">${label}</div>${sub?`<div class="kp">${sub}</div>`:''}</div>`;
 }
 
 function renderLinhasBrindes(dados){
@@ -928,6 +975,597 @@ dzv.addEventListener('drop', e=>{
 });
 
 </script>
+
+<script>
+// ===================== ABA 2 · EFICIÊNCIA DE ATENDIMENTO / EXPEDIÇÃO =====================
+// Metodologia extraída do dashboard de referência (pangeia_prazo_completo):
+// - Dias úteis: sábado/domingo não contam. Venda feita sexta após 17h, sábado ou
+//   domingo só começa a contar segunda-feira.
+// - Boxlink (Nuvemshop/PV03): SLA = D+7 dias úteis (Data -> Data conferido).
+// - Marketplace (Tiny): SLA = D+2 dias úteis (Data da venda -> Término da expedição,
+//   ligados pelo Número da Nota Fiscal).
+// - Pedido com venda mas sem embalagem registrada = "Backlog real" (categoria própria,
+//   não entra nos baldes de atraso).
+
+function showPrazoSub(name){
+  document.querySelectorAll('.prazo-sub').forEach(el=>el.style.display='none');
+  document.getElementById('prazo-sub-'+name).style.display='block';
+  event.currentTarget.parentElement.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function isWeekend(d){ const wd = d.getDay(); return wd===0 || wd===6; }
+
+// Ajusta o início da contagem: sexta após 17h, sábado ou domingo -> próxima segunda 00h
+function ajustaInicio(dt){
+  const d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), dt.getHours(), dt.getMinutes());
+  const wd = d.getDay();
+  let base = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (wd===6 || wd===0 || (wd===5 && d.getHours()>=17)){
+    // avança até a próxima segunda
+    while (base.getDay() !== 1) base.setDate(base.getDate()+1);
+  }
+  return base;
+}
+
+// Conta dias úteis entre duas datas (sem hora), D+0 = mesmo dia
+function diasUteisEntre(inicio, fim){
+  let d = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate());
+  const f = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+  if (f <= d) return 0;
+  let count = 0;
+  while (d < f){
+    d.setDate(d.getDate()+1);
+    if (!isWeekend(d)) count++;
+  }
+  return count;
+}
+
+function classificaBucket(dias, slaSet){
+  for (const b of slaSet){
+    if (dias>=b.min && dias<=b.max) return b;
+  }
+  return slaSet[slaSet.length-1];
+}
+
+const BUCKETS_BOXLINK = [
+  {min:0,max:7,label:'Dentro do prazo — até D+7 úteis',icone:'✅',cor:'#16a34a'},
+  {min:8,max:14,label:'Fora do prazo — D+8 a D+14 úteis',icone:'⚠️',cor:'#f59e0b'},
+  {min:15,max:21,label:'Atrasado — D+15 a D+21 úteis',icone:'🔶',cor:'#ea580c'},
+  {min:22,max:30,label:'Muito atrasado — D+22 a D+30 úteis',icone:'🚨',cor:'#dc2626'},
+  {min:31,max:99999,label:'Crítico — acima de D+30 úteis',icone:'🔴',cor:'#7f1d1d'},
+];
+const BUCKETS_MARKET = [
+  {min:0,max:2,label:'Dentro do prazo — até D+2 úteis',icone:'✅',cor:'#16a34a'},
+  {min:3,max:5,label:'Fora do prazo — D+3 a D+5 úteis',icone:'⚠️',cor:'#f59e0b'},
+  {min:6,max:7,label:'Atrasado — D+6 a D+7 úteis',icone:'🔶',cor:'#ea580c'},
+  {min:8,max:14,label:'Muito atrasado — D+8 a D+14 úteis',icone:'🚨',cor:'#dc2626'},
+  {min:15,max:99999,label:'Crítico — acima de D+14 úteis',icone:'🔴',cor:'#7f1d1d'},
+];
+
+// Descrição da métrica que aparece no tooltip (hover) de cada bloco.
+function descBucket(b, metricaLabel){
+  const faixa = b.max>=99999 ? `mais de ${b.min-1} dias úteis` : (b.min===0 ? `0 a ${b.max} dias úteis` : `${b.min} a ${b.max} dias úteis`);
+  return `Pedidos onde o tempo ${metricaLabel} ficou entre ${faixa} (contando só dias úteis — sábado, domingo e vendas feitas após sexta 17h não entram na contagem até a próxima segunda).`;
+}
+
+// Badges compactos "ícone % (contagem)" pra distribuição de pendentes por mês
+function renderDistribuicaoPendentes(pendBuckets, totalPendentes, buckets){
+  if (!totalPendentes) return '<span style="color:var(--txt-s)">—</span>';
+  return buckets.map(b=>{
+    const n = pendBuckets[b.label]||0;
+    if (!n) return '';
+    const pct = (n/totalPendentes*100).toFixed(0);
+    return `<span title="${b.label}" style="display:inline-block;margin-right:8px;white-space:nowrap"><span>${b.icone}</span> <b style="color:${b.cor}">${pct}%</b> <span style="color:var(--txt-s)">(${n.toLocaleString('pt-BR')})</span></span>`;
+  }).join('') || '<span style="color:var(--txt-s)">—</span>';
+}
+
+// Compara o mês mais antigo com o mês mais recente já "maduro" (com mais embalado
+// do que pendente) pra dizer se o canal está evoluindo ou piorando.
+function gerarInsightTendencia(mensal, sla, nomeCanal){
+  const meses = Object.keys(mensal).sort();
+  if (meses.length < 2) return '';
+
+  const calc = mes => {
+    const m = mensal[mes];
+    const pct = m.embalados ? (m.noPrazo/m.embalados*100) : null;
+    const media = m.embalados ? (m.somaDias/m.embalados) : null;
+    return {mes, pct, media, embalados:m.embalados, pendentes:m.pendentes||0};
+  };
+  const serie = meses.map(calc);
+  const primeiro = serie.find(s=>s.pct!==null);
+  if (!primeiro) return '';
+
+  // referência = mês mais recente onde a maioria do que foi vendido já foi embalado
+  // (evita comparar com um mês ainda "verde", que sempre parece ótimo por falta de tempo)
+  let referencia = null;
+  for (let i=serie.length-1;i>=0;i--){
+    if (serie[i].pct!==null && serie[i].embalados >= serie[i].pendentes){ referencia = serie[i]; break; }
+  }
+  if (!referencia || referencia.mes===primeiro.mes) return '';
+
+  const delta = referencia.pct - primeiro.pct;
+  const deltaMedia = (referencia.media||0) - (primeiro.media||0);
+  const melhorando = delta > 3;
+  const piorando = delta < -3;
+  const classe = melhorando ? 'g' : (piorando ? 'r' : 'b');
+  const seta = melhorando ? '📈' : (piorando ? '📉' : '➡️');
+  const veredito = melhorando ? 'evoluindo' : (piorando ? 'piorando' : 'estável');
+
+  const nota = serie.length>2 && referencia.mes!==meses[meses.length-1]
+    ? ` (não usei ${meses[meses.length-1]} como referência porque ainda tem mais pedido pendente do que embalado — é cedo pra julgar aquele mês.)`
+    : '';
+
+  return `<div class="ins ${classe}"><b>${seta} Tendência ${nomeCanal}: ${veredito}.</b> De ${primeiro.mes} (${primeiro.pct.toFixed(1)}% no prazo, média ${primeiro.media.toFixed(1)}d) para ${referencia.mes} (${referencia.pct.toFixed(1)}% no prazo, média ${referencia.media.toFixed(1)}d) — ${delta>=0?'+':''}${delta.toFixed(1)}pp no % dentro do prazo e ${deltaMedia>=0?'+':''}${deltaMedia.toFixed(1)}d na média de espera.${nota}</div>`;
+}
+
+function renderBlocos(buckets, contagens, total, metricaLabel, detalheKey, sla){
+  let html = '<div class="blocos">';
+  buckets.forEach(b=>{
+    const n = contagens[b.label]||0;
+    const pct = total ? (n/total*100) : 0;
+    const tip = descBucket(b, metricaLabel) + ' Clique para ver a lista de pedidos.';
+    html += `<div class="bloco clicavel" style="border-left:3px solid ${b.cor}" title="${tip.replace(/"/g,'&quot;')}" onclick="abrirDetalhePorBucket('${detalheKey}','${b.label.replace(/'/g,"\\'")}',${sla})">
+      <div class="bi">${b.icone}</div>
+      <div class="binfo"><div class="bt" style="color:${b.cor}">${b.label} <span style="opacity:.5;font-weight:400">ⓘ</span></div></div>
+      <div class="bbar"><div class="bfill" style="width:${pct}%;background:${b.cor}"></div></div>
+      <div class="bnum"><div class="bn" style="color:${b.cor}">${n.toLocaleString('pt-BR')}</div><div class="bp">${pct.toFixed(1)}%</div></div>
+    </div>`;
+  });
+  const backlog = contagens['BACKLOG']||0;
+  const pctBacklog = (total+backlog) ? (backlog/(total+backlog)*100) : 0;
+  const tipBacklog = `Pedido com venda confirmada, mas sem ${metricaLabel==='até a embalagem (Data conferido no PV03)' ? '"Data conferido" registrada no PV03' : 'registro de expedição encontrado no Tiny'} até o momento da extração do relatório — ou seja, ainda não foi processado. Clique para ver a lista de pedidos.`;
+  html += `<div class="bloco clicavel" style="border-left:3px solid #9ca3af;background:#f9fafb" title="${tipBacklog.replace(/"/g,'&quot;')}" onclick="abrirDetalhePorBucket('${detalheKey}','BACKLOG',${sla})">
+    <div class="bi">⏳</div>
+    <div class="binfo"><div class="bt">Backlog real (sem embalagem registrada) <span style="opacity:.5;font-weight:400">ⓘ</span></div><div class="bd">Pedido vendido mas ainda não processado</div></div>
+    <div class="bbar"><div class="bfill" style="width:${pctBacklog}%;background:#9ca3af"></div></div>
+    <div class="bnum"><div class="bn" style="color:#9ca3af">${backlog.toLocaleString('pt-BR')}</div><div class="bp">${pctBacklog.toFixed(1)}%</div></div>
+  </div>`;
+  html += '</div>';
+  return html;
+}
+
+// ---------------- MODAL DE DETALHE (drill-down dos blocos) ----------------
+window.DETALHE_BOXLINK = [];
+window.DETALHE_MARKET = [];
+let MODAL_DETALHE_ATUAL = [];
+
+function abrirDetalhePorBucket(key, bucketLabel, sla){
+  const fonte = key==='BOXLINK' ? window.DETALHE_BOXLINK : window.DETALHE_MARKET;
+  const lista = fonte.filter(d=>d.bucketLabel===bucketLabel);
+  const titulo = (bucketLabel==='BACKLOG' ? 'Backlog real (sem embalagem)' : bucketLabel) + ` — ${lista.length.toLocaleString('pt-BR')} pedido(s)`;
+  abrirDetalhe(lista, titulo, sla);
+}
+
+function abrirDetalhe(lista, titulo, sla){
+  MODAL_DETALHE_ATUAL = lista;
+  document.getElementById('modal-titulo').textContent = titulo;
+  const tbody = document.getElementById('tbl-modal-detalhe-body');
+  tbody.innerHTML = lista.map(d=>{
+    const dv = d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '—';
+    const de = d.dataEmbalagem ? d.dataEmbalagem.toLocaleString('pt-BR') : '—';
+    const dias = d.dias===null || d.dias===undefined ? '—' : d.dias;
+    const atraso = (d.dias===null || d.dias===undefined) ? '—' : (d.dias - sla > 0 ? `+${d.dias-sla}d` : `${d.dias-sla}d`);
+    const corAtraso = (d.dias===null || d.dias===undefined) ? '' : (d.dias-sla>0 ? 'color:#dc2626;font-weight:700' : 'color:#16a34a;font-weight:700');
+    return `<tr><td>${d.pedido}</td><td>${d.plataforma}</td><td>${dv}</td><td>${de}</td><td>${dias}</td><td style="${corAtraso}">${atraso}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--txt-s);padding:20px">Nenhum pedido nesse grupo.</td></tr>';
+  document.getElementById('modal-detalhe').style.display = 'flex';
+}
+
+function fecharDetalhe(){
+  document.getElementById('modal-detalhe').style.display = 'none';
+}
+
+function exportarDetalheModal(){
+  if (!MODAL_DETALHE_ATUAL.length){ alert('Nada para exportar.'); return; }
+  const ws = XLSX.utils.json_to_sheet(MODAL_DETALHE_ATUAL.map(d=>({
+    'Pedido': d.pedido, 'Plataforma': d.plataforma,
+    'Data da venda': d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '',
+    'Data de embalagem': d.dataEmbalagem ? d.dataEmbalagem.toLocaleString('pt-BR') : '',
+    'Dias úteis': d.dias, 'Bucket': d.bucketLabel
+  })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Detalhe');
+  XLSX.writeFile(wb, 'detalhe_pedidos.xlsx');
+}
+
+// ---------------- BOXLINK ----------------
+document.getElementById('pv03-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  const nomeEl = document.getElementById('pv03-filename');
+  nomeEl.innerHTML = `⏳ Lendo ${file.name} (${(file.size/1024/1024).toFixed(0)}MB)... isso pode levar alguns segundos.`;
+
+  // arquivos grandes de PV03 vêm como XML "SpreadsheetML" com extensão .xls — o
+  // SheetJS trava em arquivos muito grandes desse formato, então lemos como texto
+  // puro e extraímos só as 4 colunas que usamos (Status, Data, Pedidovenda, Data conferido).
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    // setTimeout garante que a mensagem "lendo..." pinta na tela antes do trabalho pesado travar a thread
+    setTimeout(()=>{
+      try{
+        const t0 = performance.now();
+        const buf = ev.target.result;
+        const bytes = new Uint8Array(buf.slice(0,4));
+        const isZip = bytes[0]===0x50 && bytes[1]===0x4B; // "PK" = xlsx/xls binário real (zip)
+        if (isZip){
+          const wb = XLSX.read(new Uint8Array(buf), {type:'array', cellDates:true});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, {defval:null});
+          nomeEl.textContent = '✓ ' + file.name;
+          processarBoxlink(rows);
+        } else {
+          const text = new TextDecoder('utf-8').decode(buf);
+          const rows = parseSpreadsheetMLLeve(text);
+          const seg = ((performance.now()-t0)/1000).toFixed(1);
+          nomeEl.textContent = `✓ ${file.name} (${rows.length.toLocaleString('pt-BR')} linhas, ${seg}s)`;
+          processarBoxlink(rows);
+        }
+      }catch(err){
+        alert('Erro ao processar o PV03: ' + err.message);
+        console.error(err);
+      }
+    }, 30);
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// Parser leve para o formato SpreadsheetML (Excel XML 2003) que o PV03 exporta como .xls.
+// Regex de passagem única sobre o texto inteiro (sem dividir em 300 mil pedaços antes,
+// que era o gargalo real) — extrai direto Status, Data, Pedidovenda, Data conferido.
+function parseSpreadsheetMLLeve(text){
+  const cell = '<Cell(?:\\s[^>]*)?>(?:<Data[^>]*>([\\s\\S]*?)<\\/Data>)?<\\/Cell>';
+  const re = new RegExp('<Row>'+cell+cell+cell+cell, 'g');
+  const out = [];
+  let m;
+  let first = true;
+  while ((m = re.exec(text))){
+    if (first){ first = false; continue; } // pula a linha de cabeçalho
+    out.push({
+      'Status': decodeXmlEnt(m[1]),
+      'Data': m[2] || null,
+      'Pedidovenda': decodeXmlEnt(m[3]),
+      'Data conferido': m[4] || null,
+    });
+  }
+  return out;
+}
+function decodeXmlEnt(s){
+  if (!s) return s;
+  return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+}
+
+function processarBoxlink(rows){
+  // Validação: confere se isso realmente parece um PV03 (pedidos), não outro
+  // relatório (ex: ESTQ01/estoque) com colunas parecidas mas conteúdo diferente.
+  const amostra = rows.slice(0, 200);
+  const comPedidoValido = amostra.filter(r => /^(NVS|REV)-/.test(String(r['Pedidovenda']||''))).length;
+  if (rows.length === 0 || comPedidoValido < amostra.length * 0.5){
+    alert('Esse arquivo não parece ser o relatório PV03 de pedidos — não encontrei números de pedido no formato NVS-/REV- nas colunas esperadas (Status, Data, Pedidovenda, Data conferido). Confirme se anexou o arquivo certo (às vezes é fácil confundir com o ESTQ01/estoque, que tem colunas parecidas).');
+    document.getElementById('pv03-filename').innerHTML = '❌ Arquivo não reconhecido como PV03 — tente anexar novamente.';
+    return;
+  }
+
+  // 1 linha por pedido: primeira ocorrência de Status/Data/Data conferido
+  const porPedido = {};
+  let hojeRelatorio = null;
+  rows.forEach(r=>{
+    const ped = r['Pedidovenda'];
+    if (r['Data']){ const d = new Date(r['Data']); if (!isNaN(d) && (!hojeRelatorio || d>hojeRelatorio)) hojeRelatorio = d; }
+    if (r['Data conferido']){ const d = new Date(r['Data conferido']); if (!isNaN(d) && (!hojeRelatorio || d>hojeRelatorio)) hojeRelatorio = d; }
+    if (!ped) return;
+    if (!porPedido[ped]) porPedido[ped] = {status: r['Status'], data: r['Data'], dataConf: r['Data conferido']};
+    // usa a menor Data conferido não nula (primeiro evento de embalagem)
+    if (r['Data conferido'] && (!porPedido[ped].dataConf || new Date(r['Data conferido']) < new Date(porPedido[ped].dataConf))){
+      porPedido[ped].dataConf = r['Data conferido'];
+    }
+    if (r['Data'] && (!porPedido[ped].data || new Date(r['Data']) < new Date(porPedido[ped].data))){
+      porPedido[ped].data = r['Data'];
+    }
+  });
+
+  const pedidos = Object.entries(porPedido)
+    .filter(([ped,info])=> info.status !== 'PEDIDO CANCELADO' && !ped.startsWith('REV-'));
+
+  const contagens = {};
+  let embalados = 0;
+  let semDataVenda = 0;
+  const mensal = {};
+  const detalhe = [];
+
+  pedidos.forEach(([ped,info])=>{
+    const dataVenda = new Date(info.data);
+    if (isNaN(dataVenda.getTime())){ semDataVenda++; return; } // pedido sem data de venda válida — ignora, não trava o resto
+    const mesKey = dataVenda.toISOString().slice(0,7);
+    if (!mensal[mesKey]) mensal[mesKey] = {embalados:0, noPrazo:0, fora:0, somaDias:0, pendentes:0, pendBuckets:{}};
+
+    if (!info.dataConf){
+      contagens['BACKLOG'] = (contagens['BACKLOG']||0)+1;
+      detalhe.push({pedido:ped, plataforma:'Boxlink', dataVenda, dataEmbalagem:null, dias:null, bucketLabel:'BACKLOG'});
+      // classifica o pendente por dias já decorridos até a data mais recente do relatório
+      mensal[mesKey].pendentes++;
+      const inicioP = ajustaInicio(dataVenda);
+      const diasDecorridos = diasUteisEntre(inicioP, hojeRelatorio);
+      const bucketP = classificaBucket(diasDecorridos, BUCKETS_BOXLINK);
+      mensal[mesKey].pendBuckets[bucketP.label] = (mensal[mesKey].pendBuckets[bucketP.label]||0)+1;
+      return;
+    }
+    embalados++;
+    const inicio = ajustaInicio(dataVenda);
+    const fim = new Date(info.dataConf);
+    if (isNaN(fim.getTime())){
+      contagens['BACKLOG'] = (contagens['BACKLOG']||0)+1; embalados--;
+      detalhe.push({pedido:ped, plataforma:'Boxlink', dataVenda, dataEmbalagem:null, dias:null, bucketLabel:'BACKLOG'});
+      mensal[mesKey].pendentes++;
+      const diasDecorridos = diasUteisEntre(inicio, hojeRelatorio);
+      const bucketP = classificaBucket(diasDecorridos, BUCKETS_BOXLINK);
+      mensal[mesKey].pendBuckets[bucketP.label] = (mensal[mesKey].pendBuckets[bucketP.label]||0)+1;
+      return;
+    }
+    const dias = diasUteisEntre(inicio, fim);
+    const bucket = classificaBucket(dias, BUCKETS_BOXLINK);
+    contagens[bucket.label] = (contagens[bucket.label]||0)+1;
+    detalhe.push({pedido:ped, plataforma:'Boxlink', dataVenda, dataEmbalagem:fim, dias, bucketLabel:bucket.label});
+
+    mensal[mesKey].embalados++;
+    mensal[mesKey].somaDias += dias;
+    if (dias<=7) mensal[mesKey].noPrazo++; else mensal[mesKey].fora++;
+  });
+
+  window.DETALHE_BOXLINK = detalhe;
+  renderBoxlink(pedidos.length, embalados, contagens, mensal, semDataVenda, hojeRelatorio);
+}
+
+function renderBoxlink(total, embalados, contagens, mensal, semDataVenda, hojeRelatorio){
+  const el = document.getElementById('boxlink-result');
+  el.style.display = 'block';
+  const noPrazo = contagens[BUCKETS_BOXLINK[0].label]||0;
+  const fora = embalados - noPrazo;
+  const pctPrazo = embalados ? (noPrazo/embalados*100) : 0;
+  const maxDias = window.DETALHE_BOXLINK.reduce((m,d)=> (d.dias!==null && d.dias>m) ? d.dias : m, 0);
+  const mediaGeral = embalados ? (window.DETALHE_BOXLINK.filter(d=>d.dias!==null).reduce((s,d)=>s+d.dias,0)/embalados) : 0;
+
+  window.TOTAL_PEDIDOS_BOXLINK = total;
+  const pctVolume = window.TOTAL_PEDIDOS_MARKET ? (total/(total+window.TOTAL_PEDIDOS_MARKET)*100) : null;
+
+  let html = '<div class="ins b"><b>Metodologia:</b> dias úteis, desconsiderando sábados, domingos e vendas feitas após sexta às 17h (processamento começa na segunda). Prazo contratual: D+7 dias úteis.</div>';
+  if (semDataVenda > 0){
+    html += `<div class="ins y"><b>⚠ ${semDataVenda.toLocaleString('pt-BR')} pedido(s)</b> com data de venda inválida/ilegível foram ignorados e não entram nos números abaixo.</div>`;
+  }
+
+  html += '<div class="sec">Visão Geral</div>';
+  html += '<div class="kgrid">'+
+    kpi('b', total.toLocaleString('pt-BR'), 'Total pedidos (sem cancelados)', pctVolume!==null ? `${pctVolume.toFixed(0)}% do volume total (Boxlink+Marketplace)` : null) +
+    kpi('', embalados.toLocaleString('pt-BR'), 'Embalados', `${(total?embalados/total*100:0).toFixed(1)}% do total`) +
+    kpi('g', noPrazo.toLocaleString('pt-BR'), 'Dentro do prazo D+7', `${pctPrazo.toFixed(1)}% dos embalados`) +
+    kpi('r', fora.toLocaleString('pt-BR'), 'Fora do prazo', `${(embalados?fora/embalados*100:0).toFixed(1)}% dos embalados`) +
+    kpi('o', mediaGeral.toFixed(1)+'d', 'Média (dias úteis)', `Máx: D+${maxDias} úteis`) +
+  '</div>';
+
+  html += gerarInsightTendencia(mensal, 7, 'Boxlink');
+
+  html += '<div class="sec">Classificação por Prazo (Dias Úteis)</div>';
+  html += renderBlocos(BUCKETS_BOXLINK, contagens, embalados, 'até a embalagem (Data conferido no PV03)', 'BOXLINK', 7);
+
+  html += '<div class="sec">Performance Mensal</div>';
+  html += `<div class="ins b" style="margin-bottom:10px"><b>ⓘ</b> "Pendentes" = vendido nesse mês e ainda sem embalagem até agora. A distribuição usa a mesma régua de prazo (D+7, D+8-14...), mas contando dias úteis decorridos desde a venda até <b>${hojeRelatorio ? hojeRelatorio.toLocaleDateString('pt-BR') : 'hoje'}</b> (data mais recente encontrada no relatório) — não até a embalagem, porque ela ainda não aconteceu.</div>`;
+  html += '<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Embalados</th><th>Dentro D+7</th><th>Fora</th><th>% no Prazo</th><th>Média d.úteis</th><th>Pendentes</th><th>Distribuição dos Pendentes</th></tr></thead><tbody>';
+  Object.keys(mensal).sort().forEach(mes=>{
+    const m = mensal[mes];
+    const pct = m.embalados ? (m.noPrazo/m.embalados*100) : 0;
+    const media = m.embalados ? (m.somaDias/m.embalados) : 0;
+    const badge = pct>=70?'bg':pct>=40?'bo':'br';
+    const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_BOXLINK);
+    html += `<tr><td><b>${mes}</b></td><td>${m.embalados}</td><td>${m.noPrazo}</td><td>${m.fora}</td><td><span class="badge ${badge}">${pct.toFixed(1)}%</span></td><td>${media.toFixed(1)}d</td><td><b>${m.pendentes.toLocaleString('pt-BR')}</b></td><td>${distPendentes}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+
+  el.innerHTML = html;
+}
+
+// ---------------- MARKETPLACE ----------------
+let TINY_VENDAS = null;
+let TINY_EXPEDICAO = null;
+
+function tentarProcessarMarket(){
+  if (TINY_VENDAS && TINY_EXPEDICAO) processarMarketplace();
+}
+
+document.getElementById('tiny-vendas-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('tiny-vendas-filename').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const data = new Uint8Array(ev.target.result);
+    const wb = XLSX.read(data, {type:'array', cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    TINY_VENDAS = XLSX.utils.sheet_to_json(ws, {defval:null});
+    tentarProcessarMarket();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+document.getElementById('tiny-exp-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('tiny-exp-filename').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const data = new Uint8Array(ev.target.result);
+    const wb = XLSX.read(data, {type:'array', cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    TINY_EXPEDICAO = XLSX.utils.sheet_to_json(ws, {defval:null});
+    tentarProcessarMarket();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function processarMarketplace(){
+  try{
+    // mapa Nota Fiscal -> Término mais antigo (primeiro escaneamento de embalagem)
+    const termPorNota = {};
+    let hojeRelatorio = null;
+    TINY_EXPEDICAO.forEach(r=>{
+      const s = String(r['Pedidos']||'');
+      const m = s.match(/^Nota (\d+)$/);
+      if (!m) return;
+      const nota = parseInt(m[1]);
+      const term = new Date(r['Término']);
+      if (!isNaN(term) && (!hojeRelatorio || term>hojeRelatorio)) hojeRelatorio = term;
+      if (!termPorNota[nota] || term < termPorNota[nota]) termPorNota[nota] = term;
+    });
+
+    const contagens = {};
+    let embalados = 0, total = 0;
+    const mensal = {};
+    const porPlataforma = {};
+    const detalhe = [];
+
+    TINY_VENDAS.forEach(r=>{
+      if (r['Situação da venda']==='Cancelada') return;
+      total++;
+      const nota = r['Número (Nota Fiscal)'];
+      const numeroPedido = r['Número'] || nota;
+      const dataVenda = new Date(r['Data da venda'].split('/').reverse().join('-'));
+      if (!hojeRelatorio || dataVenda>hojeRelatorio) hojeRelatorio = dataVenda;
+      const plataforma = r['Forma de envio'] || '(sem forma de envio)';
+      if (!porPlataforma[plataforma]) porPlataforma[plataforma] = {total:0, noPrazo:0, somaDias:0, comData:0};
+      porPlataforma[plataforma].total++;
+
+      const mesKey = dataVenda.toISOString().slice(0,7);
+      if (!mensal[mesKey]) mensal[mesKey] = {embalados:0, noPrazo:0, fora:0, somaDias:0, pendentes:0, pendBuckets:{}};
+
+      const term = termPorNota[nota];
+      if (!term){
+        contagens['BACKLOG'] = (contagens['BACKLOG']||0)+1;
+        detalhe.push({pedido:numeroPedido, plataforma, dataVenda, dataEmbalagem:null, dias:null, bucketLabel:'BACKLOG'});
+        mensal[mesKey].pendentes++;
+        return; // classifica depois do loop, quando hojeRelatorio já está fechado
+      }
+      embalados++;
+      const inicio = ajustaInicio(dataVenda);
+      const dias = diasUteisEntre(inicio, term);
+      const bucket = classificaBucket(dias, BUCKETS_MARKET);
+      contagens[bucket.label] = (contagens[bucket.label]||0)+1;
+      detalhe.push({pedido:numeroPedido, plataforma, dataVenda, dataEmbalagem:term, dias, bucketLabel:bucket.label});
+
+      mensal[mesKey].embalados++;
+      mensal[mesKey].somaDias += dias;
+      if (dias<=2) mensal[mesKey].noPrazo++; else mensal[mesKey].fora++;
+
+      porPlataforma[plataforma].comData++;
+      porPlataforma[plataforma].somaDias += dias;
+      if (dias<=2) porPlataforma[plataforma].noPrazo++;
+    });
+
+    // 2ª passada: agora que hojeRelatorio está fechado, classifica os pendentes por dias decorridos
+    detalhe.filter(d=>d.bucketLabel==='BACKLOG').forEach(d=>{
+      const inicio = ajustaInicio(d.dataVenda);
+      const diasDecorridos = diasUteisEntre(inicio, hojeRelatorio);
+      const bucketP = classificaBucket(diasDecorridos, BUCKETS_MARKET);
+      const mesKey = d.dataVenda.toISOString().slice(0,7);
+      if (!mensal[mesKey].pendBuckets[bucketP.label]) mensal[mesKey].pendBuckets[bucketP.label]=0;
+      mensal[mesKey].pendBuckets[bucketP.label]++;
+    });
+
+    window.DETALHE_MARKET = detalhe;
+    renderMarketplace(total, embalados, contagens, mensal, porPlataforma, hojeRelatorio);
+  }catch(err){
+    alert('Erro ao cruzar os relatórios do Tiny: ' + err.message);
+    console.error(err);
+  }
+}
+
+function renderMarketplace(total, embalados, contagens, mensal, porPlataforma, hojeRelatorio){
+  const el = document.getElementById('market-result');
+  el.style.display = 'block';
+  const noPrazo = contagens[BUCKETS_MARKET[0].label]||0;
+  const fora = embalados - noPrazo;
+  const pctPrazo = embalados ? (noPrazo/embalados*100) : 0;
+  const maxDias = window.DETALHE_MARKET.reduce((m,d)=> (d.dias!==null && d.dias>m) ? d.dias : m, 0);
+  const mediaGeral = embalados ? (window.DETALHE_MARKET.filter(d=>d.dias!==null).reduce((s,d)=>s+d.dias,0)/embalados) : 0;
+
+  window.TOTAL_PEDIDOS_MARKET = total;
+  const pctVolume = window.TOTAL_PEDIDOS_BOXLINK ? (total/(total+window.TOTAL_PEDIDOS_BOXLINK)*100) : null;
+
+  let html = '<div class="ins b"><b>Metodologia:</b> dias úteis, Data da venda (Tiny) até Término da expedição (Tiny), ligados pelo Número da Nota Fiscal. Mesma regra de sexta 17h. Prazo ideal: D+2 dias úteis.</div>';
+
+  html += '<div class="sec">Visão Geral</div>';
+  html += '<div class="kgrid">'+
+    kpi('b', total.toLocaleString('pt-BR'), 'Total pedidos', pctVolume!==null ? `${pctVolume.toFixed(0)}% do volume total (Boxlink+Marketplace)` : null) +
+    kpi('', embalados.toLocaleString('pt-BR'), 'Embalados (nota encontrada)', `${(total?embalados/total*100:0).toFixed(1)}% do total`) +
+    kpi('g', noPrazo.toLocaleString('pt-BR'), 'Dentro do prazo D+2', `${pctPrazo.toFixed(1)}% dos embalados`) +
+    kpi('r', fora.toLocaleString('pt-BR'), 'Fora do prazo', `${(embalados?fora/embalados*100:0).toFixed(1)}% dos embalados`) +
+    kpi('o', mediaGeral.toFixed(1)+'d', 'Média (dias úteis)', `Máx: D+${maxDias} úteis`) +
+  '</div>';
+
+  html += gerarInsightTendencia(mensal, 2, 'Marketplace');
+
+  html += '<div class="sec">Classificação por Prazo (Dias Úteis)</div>';
+  html += renderBlocos(BUCKETS_MARKET, contagens, embalados, 'até o escaneamento de expedição (Término no Tiny)', 'MARKET', 2);
+
+  html += '<div class="sec">Performance por Plataforma (Forma de Envio)</div>';
+  html += '<div class="platgrid">';
+  Object.entries(porPlataforma).sort((a,b)=>b[1].total-a[1].total).forEach(([nome,p])=>{
+    const pct = p.comData ? (p.noPrazo/p.comData*100) : 0;
+    const media = p.comData ? (p.somaDias/p.comData) : 0;
+    const badge = pct>=70?'bg':pct>=40?'bo':'br';
+    html += `<div class="platcard">
+      <div style="font-size:12px;font-weight:800;margin-bottom:6px">${nome}</div>
+      <div style="font-size:10px;color:var(--txt-s);margin-bottom:8px">${p.total.toLocaleString('pt-BR')} pedidos</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+        <div style="background:#f5f3ff;border-radius:6px;padding:7px;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--roxo)">${media.toFixed(1)}d</div><div style="font-size:9px;color:var(--txt-s)">média útil</div></div>
+        <div style="background:#f0fdf4;border-radius:6px;padding:7px;text-align:center"><div style="font-size:15px;font-weight:900;color:#16a34a">${pct.toFixed(1)}%</div><div style="font-size:9px;color:var(--txt-s)">no prazo</div></div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+
+  html += '<div class="sec">Performance Mensal</div>';
+  html += `<div class="ins b" style="margin-bottom:10px"><b>ⓘ</b> "Pendentes" = vendido nesse mês e ainda sem registro de expedição até agora. Distribuição usando dias úteis decorridos desde a venda até <b>${hojeRelatorio ? hojeRelatorio.toLocaleDateString('pt-BR') : 'hoje'}</b> (data mais recente encontrada nos relatórios).</div>`;
+  html += '<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Embalados</th><th>Dentro D+2</th><th>Fora</th><th>% no Prazo</th><th>Média d.úteis</th><th>Pendentes</th><th>Distribuição dos Pendentes</th></tr></thead><tbody>';
+  Object.keys(mensal).sort().forEach(mes=>{
+    const m = mensal[mes];
+    const pct = m.embalados ? (m.noPrazo/m.embalados*100) : 0;
+    const media = m.embalados ? (m.somaDias/m.embalados) : 0;
+    const badge = pct>=70?'bg':pct>=40?'bo':'br';
+    const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_MARKET);
+    html += `<tr><td><b>${mes}</b></td><td>${m.embalados}</td><td>${m.noPrazo}</td><td>${m.fora}</td><td><span class="badge ${badge}">${pct.toFixed(1)}%</span></td><td>${media.toFixed(1)}d</td><td><b>${m.pendentes.toLocaleString('pt-BR')}</b></td><td>${distPendentes}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+
+  el.innerHTML = html;
+}
+
+// drag and drop
+[['pv03-dropzone','pv03-file'],['tiny-vendas-dropzone','tiny-vendas-file'],['tiny-exp-dropzone','tiny-exp-file']].forEach(([zoneId,inputId])=>{
+  const zone = document.getElementById(zoneId);
+  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev, e=>{e.preventDefault(); zone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev, e=>{e.preventDefault(); zone.classList.remove('drag');}));
+  zone.addEventListener('drop', e=>{
+    const file = e.dataTransfer.files[0];
+    if (file){ document.getElementById(inputId).files = e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
+  });
+});
+</script>
+
+<div id="modal-detalhe" class="modal-overlay" style="display:none" onclick="if(event.target===this) fecharDetalhe()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div id="modal-titulo" style="font-weight:800;font-size:14px"></div>
+      <button class="btn btn-secondary" onclick="fecharDetalhe()" style="padding:5px 10px">✕</button>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn btn-primary" onclick="exportarDetalheModal()">⬇ Exportar esta lista</button>
+    </div>
+    <div class="table-wrap scroll" style="max-height:50vh">
+      <table id="tbl-modal-detalhe"><thead><tr>
+        <th>Pedido</th><th>Plataforma</th><th>Data da venda</th><th>Data de embalagem</th><th>Dias úteis</th><th>Atraso vs. SLA</th>
+      </tr></thead><tbody id="tbl-modal-detalhe-body"></tbody></table>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
