@@ -161,6 +161,7 @@ tr:hover td{background:#faf9ff}
   <button class="tab-btn" onclick="showTab('prazo')">⏱️ Eficiência Expedição</button>
   <button class="tab-btn" onclick="showTab('producao')">📦 Produção x Vendas</button>
   <button class="tab-btn" onclick="showTab('inventario')">📋 Inventário</button>
+  <button class="tab-btn" onclick="showTab('calcas')">👖 Calças Atendíveis</button>
 </div>
 
 <!-- ===================== ABA 1 · BRINDES ===================== -->
@@ -250,6 +251,42 @@ tr:hover td{background:#faf9ff}
   <div id="inv-result" style="display:none"></div>
   <div id="ruptura-result" style="display:none"></div>
   <div id="semmatch-result" class="card" style="display:none"></div>
+</div>
+
+<!-- ===================== ABA · CALÇAS ATENDÍVEIS ===================== -->
+<div class="page" id="page-calcas">
+  <div class="page-title">Calças Atendíveis</div>
+  <div class="page-sub">Cruza Vendas (Nuvemshop) + PV03 (para validar status real do pedido) + Contagem física de calças, e mostra quanto sobra pra atender pedido novo sem prejudicar pedido antigo.</div>
+
+  <div class="card">
+    <div class="card-title">Período protegido (pedidos que precisam de estoque garantido)</div>
+    <div style="font-size:11.5px;color:var(--txt-s);margin-bottom:8px">Pedidos vendidos DENTRO desse período entram na "Necessidade" (precisam ser protegidos). Pedidos fora do período — antes ou depois — não entram, e o campo "Data Inicial" pode ser empurrado pra frente conforme os pedidos mais antigos forem resolvidos, pra sempre focar na fila real de risco.</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div><label style="font-size:11px;font-weight:700;color:var(--txt-s);display:block;margin-bottom:3px">Data Inicial</label><input type="date" id="calc-data-inicial" value="2026-06-01" style="padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px"></div>
+      <div><label style="font-size:11px;font-weight:700;color:var(--txt-s);display:block;margin-bottom:3px">Data Final</label><input type="date" id="calc-data-final" value="2026-07-05" style="padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px"></div>
+    </div>
+  </div>
+
+  <div class="upload-box" id="calc-vendas-dropzone">
+    <label class="upload-label" for="calc-vendas-file">📁 1. Vendas Nuvemshop (.csv)</label>
+    <input type="file" id="calc-vendas-file" accept=".csv">
+    <div class="upload-hint">Pedidos pendentes — mesmo formato de sempre</div>
+    <div class="upload-filename" id="calc-vendas-filename"></div>
+  </div>
+  <div class="upload-box" id="calc-pv03-dropzone">
+    <label class="upload-label" for="calc-pv03-file">📁 2. PV03 (.xlsx/.xls)</label>
+    <input type="file" id="calc-pv03-file" accept=".xlsx,.xls">
+    <div class="upload-hint">Usado só para validar o status real de cada pedido</div>
+    <div class="upload-filename" id="calc-pv03-filename"></div>
+  </div>
+  <div class="upload-box" id="calc-contagem-dropzone">
+    <label class="upload-label" for="calc-contagem-file">📁 3. Contagem de calças de hoje (.xlsx)</label>
+    <input type="file" id="calc-contagem-file" accept=".xlsx,.xls">
+    <div class="upload-hint">Mesmo formato da aba Inventário</div>
+    <div class="upload-filename" id="calc-contagem-filename"></div>
+  </div>
+
+  <div id="calc-result" style="display:none"></div>
 </div>
 
 <script>
@@ -1031,6 +1068,71 @@ function classificaBucket(dias, slaSet){
   return slaSet[slaSet.length-1];
 }
 
+// Histórico congelado do Boxlink — período em que a empresa usava o sistema TINY
+// (antes da virada pro LINX/PV03 em 15/05/2026). Esses números não são recalculáveis
+// a partir do PV03 atual (o PV03 só existe a partir da virada), então ficam fixos
+// aqui pra sempre aparecerem no gráfico de evolução, lado a lado com os dados novos.
+const HISTORICO_BOXLINK = [
+  {mes:'Nov/25', embalados:35178, noPrazo:18117, fora:17061, pct:51.5, media:8.6},
+  {mes:'Dez/25', embalados:12515, noPrazo:11063, fora:1452, pct:88.4, media:3.7},
+  {mes:'Jan/26', embalados:11793, noPrazo:9532, fora:2261, pct:80.8, media:4.2},
+  {mes:'Fev/26', embalados:16213, noPrazo:8906, fora:7307, pct:54.9, media:9.1},
+  {mes:'Mar/26', embalados:29051, noPrazo:8420, fora:20631, pct:29.0, media:14.2},
+  {mes:'Abr/26', embalados:30765, noPrazo:9130, fora:21635, pct:29.7, media:15.1},
+  {mes:'Mai/26 (até 15/05)', embalados:19074, noPrazo:2770, fora:16304, pct:14.5, media:18.9},
+];
+
+function nomeMesPt(mesKey){
+  const [ano,mes] = mesKey.split('-');
+  const nomes=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return nomes[parseInt(mes)-1]+'/'+ano.slice(2);
+}
+
+// Gráfico simples em SVG (sem depender de lib externa) — barras de % no prazo mês a
+// mês, com os meses históricos (TINY, congelados) em cinza e os meses novos (LINX,
+// recalculados a cada relatório) na cor do canal. Linha pontilhada marca a virada.
+function renderGraficoEvolucao(historico, mensalObj, cor){
+  const liveKeys = Object.keys(mensalObj).sort();
+  const live = liveKeys.map(k=>({
+    mes: nomeMesPt(k), embalados: mensalObj[k].embalados, pct: mensalObj[k].embalados ? (mensalObj[k].noPrazo/mensalObj[k].embalados*100) : 0,
+    media: mensalObj[k].embalados ? (mensalObj[k].somaDias/mensalObj[k].embalados) : 0, novo:true
+  }));
+  const pontos = [...historico.map(h=>({...h, novo:false})), ...live];
+  if (pontos.length < 2) return '';
+
+  const w = Math.max(560, pontos.length*80), h = 220;
+  const padL = 40, padB = 34, padT = 14, padR = 10;
+  const plotW = w-padL-padR, plotH = h-padT-padB;
+  const barW = plotW/pontos.length*0.6;
+  const step = plotW/pontos.length;
+
+  let svg = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px" xmlns="http://www.w3.org/2000/svg">`;
+  // linhas de grade horizontais (0/25/50/75/100%)
+  [0,25,50,75,100].forEach(v=>{
+    const y = padT + plotH - (v/100*plotH);
+    svg += `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#eee" stroke-width="1"/>`;
+    svg += `<text x="${padL-6}" y="${y+3}" font-size="9" fill="#9ca3af" text-anchor="end">${v}%</text>`;
+  });
+  // divisor entre histórico (TINY) e novo (LINX)
+  const nHist = historico.length;
+  if (nHist>0 && nHist<pontos.length){
+    const xDiv = padL + nHist*step;
+    svg += `<line x1="${xDiv}" y1="${padT}" x2="${xDiv}" y2="${padT+plotH}" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+    svg += `<text x="${xDiv}" y="${padT-3}" font-size="8.5" fill="#6b7280" text-anchor="middle">⇐ TINY · LINX ⇒</text>`;
+  }
+  pontos.forEach((p,i)=>{
+    const x = padL + i*step + (step-barW)/2;
+    const barH = (p.pct/100)*plotH;
+    const y = padT + plotH - barH;
+    const corBarra = p.novo ? cor : '#c4c4d0';
+    svg += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${corBarra}" rx="2"><title>${p.mes}: ${p.pct.toFixed(1)}% no prazo</title></rect>`;
+    svg += `<text x="${x+barW/2}" y="${y-4}" font-size="9.5" font-weight="700" fill="${corBarra}" text-anchor="middle">${p.pct.toFixed(0)}%</text>`;
+    svg += `<text x="${x+barW/2}" y="${h-padB+14}" font-size="9" fill="#6b7280" text-anchor="middle">${p.mes}</text>`;
+  });
+  svg += '</svg>';
+  return `<div class="card"><div class="card-title">Evolução Mensal — % dentro do prazo (barras cinzas = histórico TINY, congelado · barras coloridas = LINX, dado vivo)</div><div style="overflow-x:auto">${svg}</div></div>`;
+}
+
 const BUCKETS_BOXLINK = [
   {min:0,max:7,label:'Dentro do prazo — até D+7 úteis',icone:'✅',cor:'#16a34a'},
   {min:8,max:14,label:'Fora do prazo — D+8 a D+14 úteis',icone:'⚠️',cor:'#f59e0b'},
@@ -1173,36 +1275,31 @@ function exportarDetalheModal(){
 }
 
 // ---------------- BOXLINK ----------------
-document.getElementById('pv03-file').addEventListener('change', function(e){
-  const file = e.target.files[0];
-  if (!file) return;
-  const nomeEl = document.getElementById('pv03-filename');
+// Leitor genérico de PV03 (reutilizado pela aba de Prazo e pela aba de Calças).
+// Detecta se é um xlsx/xls binário real (zip) ou o XML SpreadsheetML leve que o
+// sistema costuma exportar como .xls, e usa o parser adequado em cada caso.
+function lerArquivoPV03(file, nomeEl, callback){
   nomeEl.innerHTML = `⏳ Lendo ${file.name} (${(file.size/1024/1024).toFixed(0)}MB)... isso pode levar alguns segundos.`;
-
-  // arquivos grandes de PV03 vêm como XML "SpreadsheetML" com extensão .xls — o
-  // SheetJS trava em arquivos muito grandes desse formato, então lemos como texto
-  // puro e extraímos só as 4 colunas que usamos (Status, Data, Pedidovenda, Data conferido).
   const reader = new FileReader();
   reader.onload = function(ev){
-    // setTimeout garante que a mensagem "lendo..." pinta na tela antes do trabalho pesado travar a thread
     setTimeout(()=>{
       try{
         const t0 = performance.now();
         const buf = ev.target.result;
         const bytes = new Uint8Array(buf.slice(0,4));
-        const isZip = bytes[0]===0x50 && bytes[1]===0x4B; // "PK" = xlsx/xls binário real (zip)
+        const isZip = bytes[0]===0x50 && bytes[1]===0x4B;
         if (isZip){
           const wb = XLSX.read(new Uint8Array(buf), {type:'array', cellDates:true});
           const ws = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(ws, {defval:null});
           nomeEl.textContent = '✓ ' + file.name;
-          processarBoxlink(rows);
+          callback(rows);
         } else {
           const text = new TextDecoder('utf-8').decode(buf);
           const rows = parseSpreadsheetMLLeve(text);
           const seg = ((performance.now()-t0)/1000).toFixed(1);
           nomeEl.textContent = `✓ ${file.name} (${rows.length.toLocaleString('pt-BR')} linhas, ${seg}s)`;
-          processarBoxlink(rows);
+          callback(rows);
         }
       }catch(err){
         alert('Erro ao processar o PV03: ' + err.message);
@@ -1211,6 +1308,12 @@ document.getElementById('pv03-file').addEventListener('change', function(e){
     }, 30);
   };
   reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('pv03-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  lerArquivoPV03(file, document.getElementById('pv03-filename'), processarBoxlink);
 });
 
 // Parser leve para o formato SpreadsheetML (Excel XML 2003) que o PV03 exporta como .xls.
@@ -1346,20 +1449,25 @@ function renderBoxlink(total, embalados, contagens, mensal, semDataVenda, hojeRe
   '</div>';
 
   html += gerarInsightTendencia(mensal, 7, 'Boxlink');
+  html += renderGraficoEvolucao(HISTORICO_BOXLINK, mensal, '#5b21b6');
 
   html += '<div class="sec">Classificação por Prazo (Dias Úteis)</div>';
   html += renderBlocos(BUCKETS_BOXLINK, contagens, embalados, 'até a embalagem (Data conferido no PV03)', 'BOXLINK', 7);
 
   html += '<div class="sec">Performance Mensal</div>';
-  html += `<div class="ins b" style="margin-bottom:10px"><b>ⓘ</b> "Pendentes" = vendido nesse mês e ainda sem embalagem até agora. A distribuição usa a mesma régua de prazo (D+7, D+8-14...), mas contando dias úteis decorridos desde a venda até <b>${hojeRelatorio ? hojeRelatorio.toLocaleDateString('pt-BR') : 'hoje'}</b> (data mais recente encontrada no relatório) — não até a embalagem, porque ela ainda não aconteceu.</div>`;
+  html += `<div class="ins b" style="margin-bottom:10px"><b>ⓘ</b> "Pendentes" = vendido nesse mês e ainda sem embalagem até agora. A distribuição usa a mesma régua de prazo (D+7, D+8-14...), mas contando dias úteis decorridos desde a venda até <b>${hojeRelatorio ? hojeRelatorio.toLocaleDateString('pt-BR') : 'hoje'}</b> (data mais recente encontrada no relatório) — não até a embalagem, porque ela ainda não aconteceu. Meses marcados "histórico" são congelados (sistema TINY, antes da virada pro LINX em 15/05/2026) e não têm coluna de Pendentes (não existe mais essa informação viva pra eles).</div>`;
   html += '<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Embalados</th><th>Dentro D+7</th><th>Fora</th><th>% no Prazo</th><th>Média d.úteis</th><th>Pendentes</th><th>Distribuição dos Pendentes</th></tr></thead><tbody>';
+  HISTORICO_BOXLINK.forEach(h=>{
+    const badge = h.pct>=70?'bg':h.pct>=40?'bo':'br';
+    html += `<tr style="background:#f9fafb;color:#6b7280"><td><b>${h.mes}</b> <span style="font-size:9px;background:#e5e7eb;padding:1px 6px;border-radius:6px">histórico · TINY</span></td><td>${h.embalados.toLocaleString('pt-BR')}</td><td>${h.noPrazo.toLocaleString('pt-BR')}</td><td>${h.fora.toLocaleString('pt-BR')}</td><td><span class="badge ${badge}">${h.pct.toFixed(1)}%</span></td><td>${h.media.toFixed(1)}d</td><td>—</td><td>—</td></tr>`;
+  });
   Object.keys(mensal).sort().forEach(mes=>{
     const m = mensal[mes];
     const pct = m.embalados ? (m.noPrazo/m.embalados*100) : 0;
     const media = m.embalados ? (m.somaDias/m.embalados) : 0;
     const badge = pct>=70?'bg':pct>=40?'bo':'br';
     const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_BOXLINK);
-    html += `<tr><td><b>${mes}</b></td><td>${m.embalados}</td><td>${m.noPrazo}</td><td>${m.fora}</td><td><span class="badge ${badge}">${pct.toFixed(1)}%</span></td><td>${media.toFixed(1)}d</td><td><b>${m.pendentes.toLocaleString('pt-BR')}</b></td><td>${distPendentes}</td></tr>`;
+    html += `<tr><td><b>${nomeMesPt(mes)}</b> <span style="font-size:9px;background:var(--roxo-cl);color:var(--roxo);padding:1px 6px;border-radius:6px">LINX</span></td><td>${m.embalados}</td><td>${m.noPrazo}</td><td>${m.fora}</td><td><span class="badge ${badge}">${pct.toFixed(1)}%</span></td><td>${media.toFixed(1)}d</td><td><b>${m.pendentes.toLocaleString('pt-BR')}</b></td><td>${distPendentes}</td></tr>`;
   });
   html += '</tbody></table></div>';
 
@@ -1569,6 +1677,278 @@ function renderMarketplace(total, embalados, contagens, mensal, porPlataforma, h
     </div>
   </div>
 </div>
+
+<script>
+// ===================== ABA · CALÇAS ATENDÍVEIS =====================
+// Metodologia validada com o coordenador:
+// 1) Filtra só produtos "Calça" nas vendas pendentes (Nuvemshop).
+// 2) Pra cada pedido, confere o status real no PV03 (a Nuvemshop pode demorar a
+//    sincronizar). Só conta como pendente de verdade quem estiver em status de
+//    fila real: AG. CONFERÊNCIA, AG. PRÉ NOTA, AG. PROCESSAMENTO, AG. DECISÃO DE
+//    ESTOQUE. NÃO conta: AG. EMBARQUE (já separado/embalado), PEDIDO SUSPENSO
+//    (cliente pediu cancelamento), PEDIDO ENTREGUE, PEDIDO CANCELADO.
+// 3) Pedido pendente na Nuvemshop que não aparece no PV03 (atraso de sync) — conta
+//    como pendente por segurança (conservador, evita gerar ofensor).
+// 4) Cruza a necessidade (por Produto+Cor+Tamanho) com a contagem física de hoje
+//    pra dizer quanto sobra livre pra pedido novo.
+
+const STATUS_PENDENTE_PV03 = new Set([
+  'AG. CONFERÊNCIA', 'AG. PRÉ NOTA', 'AG. PROCESSAMENTO', 'AG. DECISÃO DE ESTOQUE'
+]);
+
+let CALC_VENDAS = null, CALC_PV03 = null, CALC_CONTAGEM = null;
+
+['calc-data-inicial','calc-data-final'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', function(){
+    if (CALC_VENDAS && CALC_PV03 && CALC_CONTAGEM) processarCalcas();
+  });
+});
+
+function tentarProcessarCalcas(){
+  if (CALC_VENDAS && CALC_PV03 && CALC_CONTAGEM) processarCalcas();
+}
+
+document.getElementById('calc-vendas-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('calc-vendas-filename').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const parsed = Papa.parse(ev.target.result, {header:true, skipEmptyLines:true});
+    CALC_VENDAS = parsed.data;
+    tentarProcessarCalcas();
+  };
+  reader.readAsText(file, 'ISO-8859-1');
+});
+
+document.getElementById('calc-pv03-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  lerArquivoPV03(file, document.getElementById('calc-pv03-filename'), function(rows){
+    CALC_PV03 = rows;
+    tentarProcessarCalcas();
+  });
+});
+
+document.getElementById('calc-contagem-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('calc-contagem-filename').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const data = new Uint8Array(ev.target.result);
+    const wb = XLSX.read(data, {type:'array', cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    CALC_CONTAGEM = XLSX.utils.sheet_to_json(ws, {defval:null});
+    tentarProcessarCalcas();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function isCalca(nomeProduto){
+  return normChave(nomeProdutoBase(nomeProduto)).startsWith('CALCA ');
+}
+
+function processarCalcas(){
+  try{
+    const dataInicial = new Date(document.getElementById('calc-data-inicial').value + 'T00:00:00');
+    const dataFinal = new Date(document.getElementById('calc-data-final').value + 'T23:59:59');
+
+    // 0) ffill da Data por pedido (só vem preenchida na 1ª linha de cada pedido no CSV)
+    const dataPorPedido = {};
+    let ultimaData = null;
+    CALC_VENDAS.forEach(r=>{
+      if (r['Data']) ultimaData = r['Data'];
+      const num = parseInt(r['Número do Pedido']);
+      if (num && !(num in dataPorPedido)) dataPorPedido[num] = ultimaData;
+    });
+
+    // 1) status real por pedido, a partir do PV03 (Pedidovenda "NVS-123456" -> nº 123456)
+    const statusPorPedido = {};
+    CALC_PV03.forEach(r=>{
+      const ped = String(r['Pedidovenda']||'');
+      const m = ped.match(/^(?:NVS|REV)-(\d+)$/);
+      if (!m) return;
+      const num = parseInt(m[1]);
+      if (!(num in statusPorPedido)) statusPorPedido[num] = r['Status'];
+    });
+
+    // 2) necessidade por Produto+Cor+Tamanho, só calças, só pedido ATÉ a data de corte e realmente pendente
+    const necessidade = {}; // chave -> {produto,cor,tamanho,qtd}
+    let totalLinhasCalca = 0, contadosPorFalta = 0, excluidosPorStatus = 0, excluidosPorDataNova = 0, excluidosPorDataAntiga = 0;
+    const excluidos = {}; // status -> contagem, pra mostrar transparência
+
+    CALC_VENDAS.forEach(r=>{
+      const nome = r['Nome do Produto'] || '';
+      if (!isCalca(nome)) return;
+      totalLinhasCalca++;
+
+      const numPedido = parseInt(r['Número do Pedido']);
+
+      // pedido fora do período protegido (antes ou depois) não entra na necessidade
+      const dataVendaStr = dataPorPedido[numPedido];
+      let dataVenda = null;
+      if (dataVendaStr){
+        const soData = String(dataVendaStr).split(' ')[0]; // remove a hora, ex: "04/08/2026 07:06:33" -> "04/08/2026"
+        const [dd,mm,yyyy] = soData.split('/');
+        if (dd && mm && yyyy) dataVenda = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+      }
+      if (dataVenda && !isNaN(dataVenda)){
+        if (dataVenda > dataFinal){ excluidosPorDataNova++; return; }
+        if (dataVenda < dataInicial){ excluidosPorDataAntiga++; return; }
+      }
+
+      const status = statusPorPedido[numPedido];
+
+      if (status === undefined){
+        contadosPorFalta++; // não achou no PV03 -> conta por segurança
+      } else if (!STATUS_PENDENTE_PV03.has(status)){
+        excluidosPorStatus++;
+        excluidos[status] = (excluidos[status]||0)+1;
+        return; // já resolvido/suspenso/etc — não entra na necessidade
+      }
+
+      const produto = nomeProdutoBase(nome);
+      const m = String(nome).match(/\(([^,]+),\s*([^)]+)\)\s*$/);
+      const cor = m ? normChave(m[1]) : '';
+      const tamanho = m ? normChave(m[2]) : '';
+      const qtd = Number(r['Quantidade Comprada']) || 1;
+      const chave = produto+'|'+cor+'|'+tamanho;
+      if (!necessidade[chave]) necessidade[chave] = {produto, cor, tamanho, qtd:0};
+      necessidade[chave].qtd += qtd;
+    });
+
+    // 3) estoque contado por Produto+Cor+Tamanho (mesma normalização)
+    const estoque = {};
+    CALC_CONTAGEM.forEach(r=>{
+      if (!isCalca(r['PRODUTO'])) return;
+      const produto = normChave(r['PRODUTO']);
+      const cor = normChave(r['COR']);
+      const tamanho = normChave(r['TAMANHO']);
+      const chave = produto+'|'+cor+'|'+tamanho;
+      if (!estoque[chave]) estoque[chave] = {produto:r['PRODUTO'], cor:r['COR'], tamanho:r['TAMANHO'], qtd:0};
+      estoque[chave].qtd += Number(r['QUANTIDADE'])||0;
+    });
+
+    // 4) junta as duas pontas
+    const chaves = new Set([...Object.keys(necessidade), ...Object.keys(estoque)]);
+    const resultado = [...chaves].map(chave=>{
+      const nec = necessidade[chave];
+      const est = estoque[chave];
+      const produto = (est?est.produto:nec.produto), cor = (est?est.cor:nec.cor), tamanho = (est?est.tamanho:nec.tamanho);
+      const contado = est ? est.qtd : 0;
+      const necessario = nec ? nec.qtd : 0;
+      const disponivel = contado - necessario;
+      return {produto, cor, tamanho, contado, necessario, disponivel};
+    }).sort((a,b)=> a.disponivel - b.disponivel);
+
+    CALCAS_RESULTADO = resultado;
+    renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPorStatus, excluidos, excluidosPorDataNova, excluidosPorDataAntiga, dataInicial, dataFinal);
+  }catch(err){
+    alert('Erro ao cruzar os 3 arquivos: ' + err.message);
+    console.error(err);
+  }
+}
+
+let CALCAS_RESULTADO = [];
+
+function renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPorStatus, excluidos, excluidosPorDataNova, excluidosPorDataAntiga, dataInicial, dataFinal){
+  const el = document.getElementById('calc-result');
+  el.style.display = 'block';
+
+  const totalContado = resultado.reduce((s,d)=>s+d.contado,0);
+  const totalNecessario = resultado.reduce((s,d)=>s+d.necessario,0);
+  const totalDisponivel = resultado.reduce((s,d)=>s+Math.max(0,d.disponivel),0);
+  const totalFaltando = resultado.reduce((s,d)=>s+Math.max(0,-d.disponivel),0);
+  const skusEmFalta = resultado.filter(d=>d.disponivel<0).length;
+
+  let html = `<div class="ins b"><b>ℹ Como é calculado:</b> Necessidade = calças em pedidos pendentes na Nuvemshop <b>vendidos entre ${dataInicial.toLocaleDateString('pt-BR')} e ${dataFinal.toLocaleDateString('pt-BR')}</b> cujo status no PV03 está em fila real (AG. CONFERÊNCIA, AG. PRÉ NOTA, AG. PROCESSAMENTO, AG. DECISÃO DE ESTOQUE) — ou que nem apareceram no PV03 ainda (contado por segurança). Pedidos fora desse período (antes ou depois) não entram na necessidade. Disponível pra pedido novo = Estoque contado hoje − essa necessidade.</div>`;
+  if (excluidosPorDataNova>0 || excluidosPorDataAntiga>0){
+    html += `<div class="ins b"><b>ℹ Fora do período:</b> ${excluidosPorDataAntiga.toLocaleString('pt-BR')} linha(s) vendidas ANTES de ${dataInicial.toLocaleDateString('pt-BR')} e ${excluidosPorDataNova.toLocaleString('pt-BR')} linha(s) vendidas DEPOIS de ${dataFinal.toLocaleDateString('pt-BR')} — nenhuma das duas entrou na necessidade.</div>`;
+  }
+
+  html += '<div class="sec">Visão Geral</div>';
+  html += '<div class="kgrid">'+
+    kpi('b', totalContado.toLocaleString('pt-BR'), 'Estoque físico contado hoje') +
+    kpi('o', totalNecessario.toLocaleString('pt-BR'), 'Necessidade (pedidos antigos)') +
+    kpi('g', totalDisponivel.toLocaleString('pt-BR'), 'Disponível p/ pedido novo') +
+    kpi('r', totalFaltando.toLocaleString('pt-BR'), 'Já em falta p/ os antigos') +
+    kpi('', skusEmFalta.toLocaleString('pt-BR'), 'SKUs (modelo/cor/tam) em falta') +
+  '</div>';
+
+  if (excluidosPorStatus>0){
+    const detalheExcl = Object.entries(excluidos).map(([s,n])=>`${s}: ${n}`).join(' · ');
+    html += `<div class="ins y"><b>ℹ ${excluidosPorStatus.toLocaleString('pt-BR')} linha(s)</b> de calça pendente na Nuvemshop foram excluídas da necessidade porque o PV03 mostrou status que não é fila real: ${detalheExcl}.</div>`;
+  }
+  if (contadosPorFalta>0){
+    html += `<div class="ins y"><b>⚠ ${contadosPorFalta.toLocaleString('pt-BR')} linha(s)</b> de calça pendente na Nuvemshop não foram encontradas no PV03 (possível atraso de sincronização) — contadas como pendente por segurança.</div>`;
+  }
+
+  html += '<div class="sec">Disponibilidade por Modelo / Cor / Tamanho</div>';
+  html += '<div class="btn-row">'+
+    '<button class="btn btn-primary" onclick="exportarCalcasFiltrado()">⬇ Exportar (respeitando filtros)</button>'+
+    '<button class="btn btn-secondary" onclick="limparFiltrosCalcas()">✕ Limpar filtros</button>'+
+  '</div>';
+  html += '<div class="table-wrap scroll"><table id="tbl-calcas"><thead><tr><th>Produto</th><th>Cor</th><th>Tamanho</th><th>Estoque Contado</th><th>Necessidade (antigos)</th><th>Disponível p/ novo</th></tr></thead>';
+  html += '<thead class="filter-row"><tr>'+
+    '<th><input type="text" oninput="filtrarCalcas()" id="fc-produto" placeholder="filtrar..."></th>'+
+    '<th><input type="text" oninput="filtrarCalcas()" id="fc-cor" placeholder="filtrar..."></th>'+
+    '<th><input type="text" oninput="filtrarCalcas()" id="fc-tamanho" placeholder="filtrar..."></th>'+
+    '<th></th><th></th><th></th>'+
+  '</tr></thead>';
+  html += '<tbody id="tbl-calcas-body"></tbody></table></div>';
+
+  el.innerHTML = html;
+  renderLinhasCalcas(resultado);
+}
+
+function renderLinhasCalcas(dados){
+  const tbody = document.getElementById('tbl-calcas-body');
+  tbody.innerHTML = dados.map(d=>{
+    const cor = d.disponivel<0 ? 'color:#dc2626;font-weight:800' : 'color:#16a34a;font-weight:800';
+    return `<tr><td>${d.produto}</td><td>${d.cor}</td><td>${d.tamanho}</td><td>${d.contado}</td><td>${d.necessario}</td><td style="${cor}">${d.disponivel}</td></tr>`;
+  }).join('');
+}
+
+function getCalcasFiltrado(){
+  const fProd = (document.getElementById('fc-produto').value||'').toLowerCase();
+  const fCor = (document.getElementById('fc-cor').value||'').toLowerCase();
+  const fTam = (document.getElementById('fc-tamanho').value||'').toLowerCase();
+  return CALCAS_RESULTADO.filter(d=>
+    d.produto.toLowerCase().includes(fProd) &&
+    d.cor.toLowerCase().includes(fCor) &&
+    String(d.tamanho).toLowerCase().includes(fTam)
+  );
+}
+function filtrarCalcas(){ renderLinhasCalcas(getCalcasFiltrado()); }
+function limparFiltrosCalcas(){
+  document.getElementById('fc-produto').value='';
+  document.getElementById('fc-cor').value='';
+  document.getElementById('fc-tamanho').value='';
+  renderLinhasCalcas(CALCAS_RESULTADO);
+}
+function exportarCalcasFiltrado(){
+  const dados = getCalcasFiltrado();
+  if (!dados.length){ alert('Nenhuma linha para exportar com o filtro atual.'); return; }
+  const ws = XLSX.utils.json_to_sheet(dados.map(d=>({
+    'Produto': d.produto, 'Cor': d.cor, 'Tamanho': d.tamanho,
+    'Estoque Contado': d.contado, 'Necessidade (antigos)': d.necessario, 'Disponível p/ novo': d.disponivel
+  })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'CalcasAtendiveis');
+  XLSX.writeFile(wb, 'calcas_atendiveis.xlsx');
+}
+
+[['calc-vendas-dropzone','calc-vendas-file'],['calc-pv03-dropzone','calc-pv03-file'],['calc-contagem-dropzone','calc-contagem-file']].forEach(([zoneId,inputId])=>{
+  const zone = document.getElementById(zoneId);
+  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev, e=>{e.preventDefault(); zone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev, e=>{e.preventDefault(); zone.classList.remove('drag');}));
+  zone.addEventListener('drop', e=>{
+    const file = e.dataTransfer.files[0];
+    if (file){ document.getElementById(inputId).files = e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
+  });
+});
+</script>
 
 </body>
 </html>
