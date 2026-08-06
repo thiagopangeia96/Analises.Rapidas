@@ -1243,6 +1243,8 @@ function abrirDetalhePorBucket(key, bucketLabel, sla){
 }
 
 function abrirDetalhe(lista, titulo, sla){
+  // restaura cabeçalho padrão (caso tenha sido trocado pela simulação)
+  document.querySelector('#tbl-modal-detalhe thead').innerHTML = '<tr><th>Pedido</th><th>Plataforma</th><th>Data da venda</th><th>Data de embalagem</th><th>Dias úteis</th><th>Atraso vs. SLA</th></tr>';
   MODAL_DETALHE_ATUAL = lista;
   document.getElementById('modal-titulo').textContent = titulo;
   const tbody = document.getElementById('tbl-modal-detalhe-body');
@@ -1257,18 +1259,36 @@ function abrirDetalhe(lista, titulo, sla){
   document.getElementById('modal-detalhe').style.display = 'flex';
 }
 
+function abrirDetalheSimulacao(tipo){
+  const sim = tipo==='periodo' ? window.CALCAS_SIM_PERIODO : window.CALCAS_SIM_NOVOS;
+  const titulo = (tipo==='periodo' ? 'Pedidos do período' : 'Pedidos novos') + ` — ${sim.atendiveis.toLocaleString('pt-BR')} atendível(is) de ${sim.total.toLocaleString('pt-BR')}`;
+  MODAL_DETALHE_ATUAL = sim.detalhe;
+  document.getElementById('modal-titulo').textContent = titulo;
+  document.querySelector('#tbl-modal-detalhe thead').innerHTML = '<tr><th>Pedido</th><th>Data da venda</th><th>Status na simulação</th></tr>';
+  document.getElementById('tbl-modal-detalhe-body').innerHTML = sim.detalhe.map(d=>{
+    const cor = d.status==='ATENDÍVEL' ? 'color:#16a34a;font-weight:700' : 'color:#dc2626;font-weight:700';
+    return `<tr><td>${d.pedido}</td><td>${d.data ? d.data.toLocaleDateString('pt-BR') : '—'}</td><td style="${cor}">${d.status}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--txt-s);padding:20px">Nenhum pedido nesse grupo.</td></tr>';
+  document.getElementById('modal-detalhe').style.display = 'flex';
+}
+
 function fecharDetalhe(){
   document.getElementById('modal-detalhe').style.display = 'none';
 }
 
 function exportarDetalheModal(){
   if (!MODAL_DETALHE_ATUAL.length){ alert('Nada para exportar.'); return; }
-  const ws = XLSX.utils.json_to_sheet(MODAL_DETALHE_ATUAL.map(d=>({
-    'Pedido': d.pedido, 'Plataforma': d.plataforma,
-    'Data da venda': d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '',
-    'Data de embalagem': d.dataEmbalagem ? d.dataEmbalagem.toLocaleString('pt-BR') : '',
-    'Dias úteis': d.dias, 'Bucket': d.bucketLabel
-  })));
+  const ehSimulacao = 'status' in MODAL_DETALHE_ATUAL[0] && !('bucketLabel' in MODAL_DETALHE_ATUAL[0]);
+  const ws = ehSimulacao
+    ? XLSX.utils.json_to_sheet(MODAL_DETALHE_ATUAL.map(d=>({
+        'Pedido': d.pedido, 'Data da venda': d.data ? d.data.toLocaleDateString('pt-BR') : '', 'Status': d.status
+      })))
+    : XLSX.utils.json_to_sheet(MODAL_DETALHE_ATUAL.map(d=>({
+        'Pedido': d.pedido, 'Plataforma': d.plataforma,
+        'Data da venda': d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '',
+        'Data de embalagem': d.dataEmbalagem ? d.dataEmbalagem.toLocaleString('pt-BR') : '',
+        'Dias úteis': d.dias, 'Bucket': d.bucketLabel
+      })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Detalhe');
   XLSX.writeFile(wb, 'detalhe_pedidos.xlsx');
@@ -1773,10 +1793,19 @@ function processarCalcas(){
       if (!(num in statusPorPedido)) statusPorPedido[num] = r['Status'];
     });
 
-    // 2) necessidade por Produto+Cor+Tamanho, só calças, só pedido ATÉ a data de corte e realmente pendente
-    const necessidade = {}; // chave -> {produto,cor,tamanho,qtd}
+    // 2) monta, por pedido, as linhas de calça elegíveis (status pendente real),
+    //    separando em 3 grupos: antes do período (ignorado), dentro do período
+    //    (necessidade a proteger) e depois do período (pedido novo).
+    const necessidade = {}; // chave -> {produto,cor,tamanho,qtd} — só pra tabela por SKU
+    const pedidosPeriodo = {}; // pedido -> {data, linhas:[{chave,qtd}]}
+    const pedidosNovos = {};
     let totalLinhasCalca = 0, contadosPorFalta = 0, excluidosPorStatus = 0, excluidosPorDataNova = 0, excluidosPorDataAntiga = 0;
-    const excluidos = {}; // status -> contagem, pra mostrar transparência
+    const excluidos = {};
+
+    function addLinha(mapa, pedido, dataVenda, chave, qtd){
+      if (!mapa[pedido]) mapa[pedido] = {data:dataVenda, linhas:[]};
+      mapa[pedido].linhas.push({chave, qtd});
+    }
 
     CALC_VENDAS.forEach(r=>{
       const nome = r['Nome do Produto'] || '';
@@ -1784,28 +1813,20 @@ function processarCalcas(){
       totalLinhasCalca++;
 
       const numPedido = parseInt(r['Número do Pedido']);
+      const status = statusPorPedido[numPedido];
+      if (status !== undefined && !STATUS_PENDENTE_PV03.has(status)){
+        excluidosPorStatus++;
+        excluidos[status] = (excluidos[status]||0)+1;
+        return; // já resolvido/suspenso/etc — sai da simulação inteira
+      }
+      if (status === undefined) contadosPorFalta++;
 
-      // pedido fora do período protegido (antes ou depois) não entra na necessidade
       const dataVendaStr = dataPorPedido[numPedido];
       let dataVenda = null;
       if (dataVendaStr){
-        const soData = String(dataVendaStr).split(' ')[0]; // remove a hora, ex: "04/08/2026 07:06:33" -> "04/08/2026"
+        const soData = String(dataVendaStr).split(' ')[0]; // remove a hora
         const [dd,mm,yyyy] = soData.split('/');
         if (dd && mm && yyyy) dataVenda = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-      }
-      if (dataVenda && !isNaN(dataVenda)){
-        if (dataVenda > dataFinal){ excluidosPorDataNova++; return; }
-        if (dataVenda < dataInicial){ excluidosPorDataAntiga++; return; }
-      }
-
-      const status = statusPorPedido[numPedido];
-
-      if (status === undefined){
-        contadosPorFalta++; // não achou no PV03 -> conta por segurança
-      } else if (!STATUS_PENDENTE_PV03.has(status)){
-        excluidosPorStatus++;
-        excluidos[status] = (excluidos[status]||0)+1;
-        return; // já resolvido/suspenso/etc — não entra na necessidade
       }
 
       const produto = nomeProdutoBase(nome);
@@ -1814,8 +1835,21 @@ function processarCalcas(){
       const tamanho = m ? normChave(m[2]) : '';
       const qtd = Number(r['Quantidade Comprada']) || 1;
       const chave = produto+'|'+cor+'|'+tamanho;
+
+      if (dataVenda && !isNaN(dataVenda) && dataVenda > dataFinal){
+        excluidosPorDataNova++;
+        addLinha(pedidosNovos, numPedido, dataVenda, chave, qtd);
+        return;
+      }
+      if (dataVenda && !isNaN(dataVenda) && dataVenda < dataInicial){
+        excluidosPorDataAntiga++;
+        return; // fora do período, pra trás — ignorado, não simulado
+      }
+
+      // dentro do período (ou sem data válida — tratado como período por segurança)
       if (!necessidade[chave]) necessidade[chave] = {produto, cor, tamanho, qtd:0};
       necessidade[chave].qtd += qtd;
+      addLinha(pedidosPeriodo, numPedido, dataVenda, chave, qtd);
     });
 
     // 3) estoque contado por Produto+Cor+Tamanho (mesma normalização)
@@ -1830,7 +1864,7 @@ function processarCalcas(){
       estoque[chave].qtd += Number(r['QUANTIDADE'])||0;
     });
 
-    // 4) junta as duas pontas
+    // 4) junta as duas pontas (visão por SKU)
     const chaves = new Set([...Object.keys(necessidade), ...Object.keys(estoque)]);
     const resultado = [...chaves].map(chave=>{
       const nec = necessidade[chave];
@@ -1842,8 +1876,41 @@ function processarCalcas(){
       return {produto, cor, tamanho, contado, necessario, disponivel};
     }).sort((a,b)=> a.disponivel - b.disponivel);
 
+    // 5) simulação de atendimento pedido a pedido (FIFO — mais antigo primeiro),
+    //    consumindo o estoque real. Um pedido só é "atendível" se TODAS as suas
+    //    linhas de calça tiverem saldo suficiente no momento em que chega sua vez.
+    function simular(mapaPedidos, estoqueDisponivel){
+      const ordenados = Object.entries(mapaPedidos).sort((a,b)=>{
+        const da = a[1].data ? a[1].data.getTime() : 0;
+        const db = b[1].data ? b[1].data.getTime() : 0;
+        return da - db;
+      });
+      let atendiveis = 0, naoAtendiveis = 0;
+      const detalhe = [];
+      ordenados.forEach(([pedido, info])=>{
+        const pode = info.linhas.every(l => (estoqueDisponivel[l.chave]||0) >= l.qtd);
+        if (pode){
+          info.linhas.forEach(l => estoqueDisponivel[l.chave] -= l.qtd);
+          atendiveis++;
+          detalhe.push({pedido, data:info.data, status:'ATENDÍVEL'});
+        } else {
+          naoAtendiveis++;
+          detalhe.push({pedido, data:info.data, status:'NÃO ATENDÍVEL'});
+        }
+      });
+      return {atendiveis, naoAtendiveis, total:ordenados.length, detalhe};
+    }
+
+    const estoqueSimulado = {};
+    Object.entries(estoque).forEach(([chave,e])=> estoqueSimulado[chave] = e.qtd);
+
+    const simPeriodo = simular(pedidosPeriodo, estoqueSimulado); // consome o estoque
+    const simNovos = simular(pedidosNovos, estoqueSimulado); // usa só o que sobrou
+
     CALCAS_RESULTADO = resultado;
-    renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPorStatus, excluidos, excluidosPorDataNova, excluidosPorDataAntiga, dataInicial, dataFinal);
+    window.CALCAS_SIM_PERIODO = simPeriodo;
+    window.CALCAS_SIM_NOVOS = simNovos;
+    renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPorStatus, excluidos, excluidosPorDataNova, excluidosPorDataAntiga, dataInicial, dataFinal, simPeriodo, simNovos);
   }catch(err){
     alert('Erro ao cruzar os 3 arquivos: ' + err.message);
     console.error(err);
@@ -1852,7 +1919,7 @@ function processarCalcas(){
 
 let CALCAS_RESULTADO = [];
 
-function renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPorStatus, excluidos, excluidosPorDataNova, excluidosPorDataAntiga, dataInicial, dataFinal){
+function renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPorStatus, excluidos, excluidosPorDataNova, excluidosPorDataAntiga, dataInicial, dataFinal, simPeriodo, simNovos){
   const el = document.getElementById('calc-result');
   el.style.display = 'block';
 
@@ -1867,13 +1934,27 @@ function renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPo
     html += `<div class="ins b"><b>ℹ Fora do período:</b> ${excluidosPorDataAntiga.toLocaleString('pt-BR')} linha(s) vendidas ANTES de ${dataInicial.toLocaleDateString('pt-BR')} e ${excluidosPorDataNova.toLocaleString('pt-BR')} linha(s) vendidas DEPOIS de ${dataFinal.toLocaleDateString('pt-BR')} — nenhuma das duas entrou na necessidade.</div>`;
   }
 
-  html += '<div class="sec">Visão Geral</div>';
+  html += '<div class="sec">Visão Geral (peças)</div>';
   html += '<div class="kgrid">'+
     kpi('b', totalContado.toLocaleString('pt-BR'), 'Estoque físico contado hoje') +
     kpi('o', totalNecessario.toLocaleString('pt-BR'), 'Necessidade (pedidos antigos)') +
     kpi('g', totalDisponivel.toLocaleString('pt-BR'), 'Disponível p/ pedido novo') +
     kpi('r', totalFaltando.toLocaleString('pt-BR'), 'Já em falta p/ os antigos') +
     kpi('', skusEmFalta.toLocaleString('pt-BR'), 'SKUs (modelo/cor/tam) em falta') +
+  '</div>';
+
+  html += '<div class="sec">Pedidos Atendíveis (simulação FIFO — mais antigo primeiro)</div>';
+  html += '<div class="ins b"><b>ℹ Como funciona:</b> simulo a saída do estoque pedido por pedido, do mais antigo pro mais novo. Um pedido só é "atendível" se TODAS as calças dele (pode ter mais de um modelo/cor/tamanho) tiverem saldo suficiente na vez dele. Primeiro esgota o estoque nos pedidos do período selecionado; o que sobrar é testado nos pedidos novos.</div>';
+  const pctPeriodo = simPeriodo.total ? (simPeriodo.atendiveis/simPeriodo.total*100) : 0;
+  const pctNovos = simNovos.total ? (simNovos.atendiveis/simNovos.total*100) : 0;
+  html += '<div class="kgrid">'+
+    kpi('g', `${simPeriodo.atendiveis.toLocaleString('pt-BR')} / ${simPeriodo.total.toLocaleString('pt-BR')}`, 'Pedidos do período atendíveis', `${pctPeriodo.toFixed(1)}%`) +
+    kpi('r', simPeriodo.naoAtendiveis.toLocaleString('pt-BR'), 'Pedidos do período NÃO atendíveis') +
+    kpi('g', `${simNovos.atendiveis.toLocaleString('pt-BR')} / ${simNovos.total.toLocaleString('pt-BR')}`, 'Pedidos NOVOS atendíveis com o saldo', simNovos.total ? `${pctNovos.toFixed(1)}%` : 'sem pedido novo no arquivo') +
+  '</div>';
+  html += '<div class="btn-row">'+
+    '<button class="btn btn-secondary" onclick="abrirDetalheSimulacao(\'periodo\')">🔍 Ver pedidos do período (atendível/não)</button>'+
+    '<button class="btn btn-secondary" onclick="abrirDetalheSimulacao(\'novos\')">🔍 Ver pedidos novos (atendível/não)</button>'+
   '</div>';
 
   if (excluidosPorStatus>0){
