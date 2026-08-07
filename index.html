@@ -162,6 +162,7 @@ tr:hover td{background:#faf9ff}
   <button class="tab-btn" onclick="showTab('producao')">📦 Produção x Vendas</button>
   <button class="tab-btn" onclick="showTab('inventario')">📋 Inventário</button>
   <button class="tab-btn" onclick="showTab('calcas')">👖 Calças Atendíveis</button>
+  <button class="tab-btn" onclick="showTab('atendiveis')">📊 Análise Atendíveis</button>
 </div>
 
 <!-- ===================== ABA 1 · BRINDES ===================== -->
@@ -2027,6 +2028,400 @@ function exportarCalcasFiltrado(){
   zone.addEventListener('drop', e=>{
     const file = e.dataTransfer.files[0];
     if (file){ document.getElementById(inputId).files = e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
+  });
+});
+</script>
+
+<!-- ===================== ABA · ANÁLISE ATENDÍVEIS ===================== -->
+<div class="page" id="page-atendiveis">
+  <div class="page-title">Análise Atendíveis</div>
+  <div class="page-sub">Cruza Vendas (Nuvemshop) + PV03 + Estoque (ESTQ01) para mostrar a necessidade pendente por SKU e a ruptura, classificada por tipo e período.</div>
+
+  <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div>
+      <label style="font-size:11px;font-weight:700;color:var(--txt-s);display:block;margin-bottom:3px">Data Inicial</label>
+      <input type="date" id="at-data-ini" style="width:100%;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px">
+    </div>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:var(--txt-s);display:block;margin-bottom:3px">Data Final</label>
+      <input type="date" id="at-data-fim" style="width:100%;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Modo de validação do estoque</div>
+    <div style="display:flex;gap:16px;font-size:12.5px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700">
+        <input type="radio" name="at-modo" id="at-modo-saldo" value="saldo" checked> Por saldo (usa Estoque atual − Necessidade)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700">
+        <input type="radio" name="at-modo" id="at-modo-local" value="local"> Por localização (tem local = tem produto; sem local = zerado)
+      </label>
+    </div>
+    <div id="at-aviso-local" class="ins y" style="display:none;margin-top:10px"><b>⚠ Atenção:</b> a análise por localização não valida saldo. Um item pode ter local cadastrado mas não ter estoque suficiente para toda a demanda — use essa visão como referência rápida, não como número definitivo.</div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    <div class="upload-box" id="at-vendas-dropzone" style="padding:16px">
+      <label class="upload-label" for="at-vendas-file" style="font-size:12px;padding:8px 14px">📁 Vendas (.csv)</label>
+      <input type="file" id="at-vendas-file" accept=".csv">
+      <div class="upload-filename" id="at-vendas-fn" style="font-size:11px;margin-top:6px"></div>
+    </div>
+    <div class="upload-box" id="at-pv03-dropzone" style="padding:16px">
+      <label class="upload-label" for="at-pv03-file" style="font-size:12px;padding:8px 14px">📁 PV03 (.xls/.xlsx)</label>
+      <input type="file" id="at-pv03-file" accept=".xls,.xlsx">
+      <div class="upload-filename" id="at-pv03-fn" style="font-size:11px;margin-top:6px"></div>
+    </div>
+    <div class="upload-box" id="at-estq-dropzone" style="padding:16px">
+      <label class="upload-label" for="at-estq-file" style="font-size:12px;padding:8px 14px">📁 Estoque ESTQ01 (.xls/.xlsx)</label>
+      <input type="file" id="at-estq-file" accept=".xls,.xlsx">
+      <div class="upload-filename" id="at-estq-fn" style="font-size:11px;margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div id="at-result" style="display:none"></div>
+</div>
+
+<script>
+// ===================== ABA · ANÁLISE ATENDÍVEIS =====================
+// Regras de classificação por tipo:
+//   TRICOT  = nome contém TRICOT, CASACO ou JAQUETA
+//   CALÇA   = nome contém CALÇA
+//   MALHARIA= todo o resto (exceto brindes "-PNG")
+//   Brindes = itens cujo nome termina em "PNG" → excluídos
+// Subclassificação de Malharia: extrai a primeira palavra do nome do produto.
+
+const STATUS_AT = new Set(['AG. CONFERÊNCIA','AG. PRÉ NOTA','AG. PROCESSAMENTO','AG. DECISÃO DE ESTOQUE']);
+
+let AT_VENDAS = null, AT_PV03 = null, AT_ESTQ = null;
+let AT_LOADING_PV03 = false;
+
+document.getElementById('at-modo-local').addEventListener('change', function(){
+  document.getElementById('at-aviso-local').style.display = this.checked ? 'block' : 'none';
+});
+document.getElementById('at-modo-saldo').addEventListener('change', function(){
+  document.getElementById('at-aviso-local').style.display = 'none';
+});
+
+function tentarProcessarAt(){
+  if (AT_LOADING_PV03) return; // PV03 ainda carregando, chamará de novo quando terminar
+  if (AT_VENDAS && AT_PV03 && AT_ESTQ) processarAtendiveis();
+}
+['at-data-ini','at-data-fim'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', ()=>{ if(AT_VENDAS&&AT_PV03&&AT_ESTQ) processarAtendiveis(); });
+});
+document.querySelectorAll('input[name="at-modo"]').forEach(r=>r.addEventListener('change', ()=>{ if(AT_VENDAS&&AT_PV03&&AT_ESTQ) processarAtendiveis(); }));
+
+document.getElementById('at-vendas-file').addEventListener('change', function(e){
+  const file = e.target.files[0]; if(!file) return;
+  document.getElementById('at-vendas-fn').textContent = '⏳ '+file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const parsed = Papa.parse(ev.target.result, {header:true, skipEmptyLines:true});
+    AT_VENDAS = parsed.data;
+    document.getElementById('at-vendas-fn').textContent = '✓ '+file.name;
+    tentarProcessarAt();
+  };
+  reader.readAsText(file,'ISO-8859-1');
+});
+
+document.getElementById('at-pv03-file').addEventListener('change', function(e){
+  const file = e.target.files[0]; if(!file) return;
+  AT_LOADING_PV03 = true;
+  lerArquivoPV03(file, document.getElementById('at-pv03-fn'), function(rows){
+    AT_PV03 = rows;
+    AT_LOADING_PV03 = false;
+    tentarProcessarAt();
+  });
+});
+
+document.getElementById('at-estq-file').addEventListener('change', function(e){
+  const file = e.target.files[0]; if(!file) return;
+  document.getElementById('at-estq-fn').textContent = '⏳ '+file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const buf = new Uint8Array(ev.target.result);
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    AT_ESTQ = XLSX.utils.sheet_to_json(ws, {defval:null});
+    document.getElementById('at-estq-fn').textContent = '✓ '+file.name+' ('+AT_ESTQ.length+' linhas)';
+    tentarProcessarAt();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// Classificação de tipo
+function tipoItem(nome){
+  const n = normChave(nome);
+  if (n.endsWith('PNG')) return null; // brinde — excluído
+  if (/TRICOT|CASACO|JAQUETA/.test(n)) return {tipo:'TRICOT', sub:'TRICOT'};
+  if (/CALCA /.test(n)) return {tipo:'CALÇA', sub:'CALÇA'};
+  // Malharia: subclassifica pela primeira palavra do nome
+  const palavras = n.split(' ');
+  const sub = palavras[0] || 'OUTROS';
+  return {tipo:'MALHARIA', sub};
+}
+
+function processarAtendiveis(){
+  try{
+    const dataIni = document.getElementById('at-data-ini').value;
+    const dataFim = document.getElementById('at-data-fim').value;
+    const modo = document.querySelector('input[name="at-modo"]:checked').value;
+
+    const dIni = dataIni ? new Date(dataIni+'T00:00:00') : null;
+    const dFim = dataFim ? new Date(dataFim+'T23:59:59') : null;
+
+    // 1) Status por pedido do PV03
+    const statusPedido = {};
+    AT_PV03.forEach(r=>{
+      const ped = String(r['Pedidovenda']||'');
+      const m = ped.match(/^(?:NVS|REV)-(\d+)$/);
+      if(!m) return;
+      const num = parseInt(m[1]);
+      if(!(num in statusPedido)) statusPedido[num] = r['Status'];
+    });
+
+    // 2) ffill de Data por pedido
+    const dataPedido = {};
+    let ultData = null;
+    AT_VENDAS.forEach(r=>{
+      if(r['Data']) ultData = r['Data'];
+      const num = parseInt(r['Número do Pedido']);
+      if(num && !(num in dataPedido)) dataPedido[num] = ultData;
+    });
+
+    // 3) Necessidade por produto+cor+tam (excluindo brindes PNG e por período/status)
+    const necessidade = {};
+    let exclBrinde=0, exclStatus=0, exclData=0, semPv03=0;
+    const exclStatusDetalhe = {};
+
+    AT_VENDAS.forEach(r=>{
+      const nome = r['Nome do Produto']||'';
+      const t = tipoItem(nomeProdutoBase(nome));
+      if(!t){ exclBrinde++; return; }
+
+      const num = parseInt(r['Número do Pedido']);
+      const status = statusPedido[num];
+      if(status!==undefined && !STATUS_AT.has(status)){
+        exclStatus++;
+        exclStatusDetalhe[status]=(exclStatusDetalhe[status]||0)+1;
+        return;
+      }
+      if(status===undefined) semPv03++;
+
+      // filtro de data
+      const ds = (dataPedido[num]||'').split(' ')[0];
+      let dPed = null;
+      if(ds){ const [dd,mm,yyyy]=ds.split('/'); if(dd&&mm&&yyyy) dPed=new Date(`${yyyy}-${mm}-${dd}T00:00:00`); }
+      if(dPed && dIni && dPed<dIni){ exclData++; return; }
+      if(dPed && dFim && dPed>dFim){ exclData++; return; }
+
+      const prod = nomeProdutoBase(nome);
+      const mCor = String(nome).match(/\(([^,]+),\s*([^)]+)\)\s*$/);
+      const cor = mCor ? normChave(mCor[1]) : '';
+      const tam = mCor ? normChave(mCor[2]) : '';
+      const chave = normChave(prod)+'||'+cor+'||'+tam;
+      const qtd = Number(r['Quantidade Comprada'])||1;
+      if(!necessidade[chave]) necessidade[chave]={nome:prod, cor, tam, qtd:0, tipo:t.tipo, sub:t.sub};
+      necessidade[chave].qtd += qtd;
+    });
+
+    // 4) Estoque por produto+cor+tam
+    const estoque = {};
+    AT_ESTQ.forEach(r=>{
+      const desc = String(r['Descrição']||r['DESCRIÇÃO']||'').trim();
+      if(!desc) return;
+      const t = tipoItem(desc);
+      if(!t) return; // brinde
+      const corRaw = String(r['Cor']||r['COR']||'');
+      const cor = normChave(corRaw.includes(' - ') ? corRaw.split(' - ').slice(1).join(' - ') : corRaw);
+      const tam = normChave(String(r['Tam']||r['TAM']||r['Tamanho']||''));
+      const chave = normChave(desc)+'||'+cor+'||'+tam;
+      if(!estoque[chave]) estoque[chave]={saldo:0, temLocal:false};
+      estoque[chave].saldo += Number(r['Estoque atual']||r['ESTOQUE ATUAL']||0);
+      if(r['Local']||r['LOCAL']) estoque[chave].temLocal = true;
+    });
+
+    // 5) Cruza e calcula ruptura
+    const resultado = Object.entries(necessidade).map(([chave, n])=>{
+      const est = estoque[chave]||{saldo:0, temLocal:false};
+      let estoqueDisp, ruptura, semEstoque;
+      if(modo==='saldo'){
+        estoqueDisp = est.saldo;
+        ruptura = estoqueDisp - n.qtd;
+        semEstoque = false;
+      } else {
+        estoqueDisp = est.temLocal ? '(tem local)' : '(sem local)';
+        ruptura = est.temLocal ? null : -n.qtd; // sem local = ruptura total
+        semEstoque = !est.temLocal;
+      }
+      return {...n, estoqueDisp, ruptura, semEstoque};
+    }).sort((a,b)=>{
+      if(modo==='local'){
+        // "sem local" = ruptura confirmada → vem antes, ordenado por necessidade decrescente
+        // "tem local" = ruptura possível → vem depois, também por necessidade decrescente
+        if(a.semEstoque !== b.semEstoque) return a.semEstoque ? -1 : 1;
+        return b.qtd - a.qtd;
+      }
+      // modo saldo: maior ruptura (mais negativo) primeiro; positivos vêm depois
+      const ra = a.ruptura; const rb = b.ruptura;
+      if(ra<0 && rb>=0) return -1;
+      if(rb<0 && ra>=0) return 1;
+      return ra - rb;
+    });
+
+    AT_RESULTADO = resultado;
+    AT_MODO_ATUAL = modo;
+    renderAtendiveis(resultado, modo, exclStatusDetalhe, semPv03, exclData, exclBrinde);
+  }catch(err){
+    alert('Erro ao processar: '+err.message);
+    console.error(err);
+  }
+}
+
+let AT_RESULTADO = [], AT_MODO_ATUAL = 'saldo';
+let AT_TIPO_ATIVO = 'TODOS', AT_SUB_ATIVA = '';
+
+function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBrinde){
+  const el = document.getElementById('at-result');
+  el.style.display = 'block';
+
+  const totalNec = resultado.reduce((s,d)=>s+d.qtd,0);
+  const totalRupt = resultado.filter(d=>d.ruptura!==null&&d.ruptura<0).length;
+  const totalOk = resultado.filter(d=>d.ruptura!==null&&d.ruptura>=0).length;
+  const totalSemEst = resultado.filter(d=>d.semEstoque).length;
+
+  let html = '';
+  // Aviso de exclusões
+  const exclStatusStr = Object.entries(exclStatus).map(([s,n])=>`${s}: ${n}`).join(' · ');
+  if(exclStatusStr) html += `<div class="ins b"><b>ℹ Excluídos por status já resolvido:</b> ${exclStatusStr}. ${semPv03} linha(s) não encontradas no PV03 (contadas como pendente por segurança). ${exclData} linha(s) fora do período. ${exclBrinde} brindes ignorados.</div>`;
+
+  html += '<div class="sec">Visão Geral</div>';
+  html += '<div class="kgrid">'+
+    kpi('b', resultado.length.toLocaleString('pt-BR'), 'SKUs com necessidade no período') +
+    kpi('o', totalNec.toLocaleString('pt-BR'), 'Total peças necessárias') +
+    kpi('r', totalRupt.toLocaleString('pt-BR'), 'SKUs em ruptura') +
+    kpi('g', totalOk.toLocaleString('pt-BR'), 'SKUs cobertos') +
+    (modo==='local' ? kpi('r', totalSemEst.toLocaleString('pt-BR'), 'SKUs sem localização') : '') +
+  '</div>';
+
+  // Botões de tipo
+  const tipos = ['TODOS','TRICOT','CALÇA','MALHARIA'];
+  const subs = [...new Set(resultado.filter(d=>d.tipo==='MALHARIA').map(d=>d.sub))].sort();
+  html += '<div class="sec">Filtrar por Tipo</div>';
+  html += '<div class="btn-row" id="at-tipo-btns">';
+  tipos.forEach(t=>{
+    const cnt = t==='TODOS' ? resultado.length : resultado.filter(d=>d.tipo===t).length;
+    html += `<button class="btn ${t===AT_TIPO_ATIVO?'btn-primary':'btn-secondary'}" onclick="filtrarAtTipo('${t}')">${t} (${cnt})</button>`;
+  });
+  html += '</div>';
+  html += '<div id="at-sub-btns" class="btn-row" style="margin-top:-6px">';
+  subs.forEach(s=>{
+    const cnt = resultado.filter(d=>d.sub===s).length;
+    html += `<button class="btn ${s===AT_SUB_ATIVA?'btn-primary':'btn-secondary'}" style="font-size:11px;padding:6px 10px" onclick="filtrarAtSub('${s}')">${s} (${cnt})</button>`;
+  });
+  html += '</div>';
+
+  // Exportações
+  html += '<div class="btn-row" style="margin-top:8px">'+
+    '<button class="btn btn-primary" onclick="exportarAt(\'top20\')">⬇ Exportar Top 20 Ofensores</button>'+
+    '<button class="btn btn-secondary" onclick="exportarAt(\'geral\')">⬇ Exportar Relação Geral</button>'+
+    '<button class="btn btn-secondary" onclick="limparFiltrosAt()">✕ Limpar filtros</button>'+
+  '</div>';
+
+  // Tabela
+  const colEst = modo==='saldo' ? 'Estoque Disponível' : 'Localização';
+  html += '<div class="table-wrap scroll"><table id="tbl-at"><thead><tr>'+
+    '<th>#</th><th>Produto</th><th>Cor</th><th>Tam</th><th>Tipo</th><th>Sub</th><th>Necessidade</th>'+
+    `<th>${colEst}</th><th>Ruptura / Saldo</th>`+
+  '</tr></thead><thead class="filter-row"><tr>'+
+    '<th></th>'+
+    '<th><input type="text" id="fat-prod" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
+    '<th><input type="text" id="fat-cor" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
+    '<th><input type="text" id="fat-tam" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
+    '<th></th><th></th><th></th><th></th><th></th>'+
+  '</tr></thead><tbody id="tbl-at-body"></tbody></table></div>';
+
+  el.innerHTML = html;
+  AT_TIPO_ATIVO = 'TODOS'; AT_SUB_ATIVA = '';
+  renderTabelaAt();
+}
+
+function getAtFiltrado(){
+  const fProd = (document.getElementById('fat-prod')?.value||'').toLowerCase();
+  const fCor = (document.getElementById('fat-cor')?.value||'').toLowerCase();
+  const fTam = (document.getElementById('fat-tam')?.value||'').toLowerCase();
+  return AT_RESULTADO.filter(d=>{
+    if(AT_TIPO_ATIVO!=='TODOS' && d.tipo!==AT_TIPO_ATIVO) return false;
+    if(AT_SUB_ATIVA && d.sub!==AT_SUB_ATIVA) return false;
+    if(fProd && !d.nome.toLowerCase().includes(fProd)) return false;
+    if(fCor && !d.cor.toLowerCase().includes(fCor)) return false;
+    if(fTam && !String(d.tam).toLowerCase().includes(fTam)) return false;
+    return true;
+  });
+}
+
+function renderTabelaAt(){
+  const dados = getAtFiltrado();
+  const tbody = document.getElementById('tbl-at-body');
+  if(!tbody) return;
+  tbody.innerHTML = dados.map((d,i)=>{
+    const rup = d.ruptura;
+    const corTxt = rup===null ? '' : (rup<0?'color:#dc2626;font-weight:800':'color:#16a34a;font-weight:700');
+    const fundo = rup===null ? (d.semEstoque?'background:#fef2f2':'') : (rup<0?'background:#fff0f0':'background:#f0fff4');
+    const rupturaStr = rup===null ? (d.semEstoque?'<span class="badge br">SEM LOCAL</span>':'—') : rup;
+    return `<tr style="${fundo}"><td style="color:var(--txt-s);font-size:10px">${i+1}</td><td>${d.nome}</td><td>${d.cor}</td><td>${d.tam}</td><td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':'bg'}">${d.tipo}</span></td><td style="font-size:10px;color:var(--txt-s)">${d.sub}</td><td><b>${d.qtd.toLocaleString('pt-BR')}</b></td><td>${typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp}</td><td style="${corTxt}">${rupturaStr}</td></tr>`;
+  }).join('') || '<tr><td colspan="9" class="empty-state">Nenhum item com esses filtros.</td></tr>';
+}
+
+function filtrarAtTipo(tipo){
+  AT_TIPO_ATIVO = tipo; AT_SUB_ATIVA = '';
+  // atualiza highlight dos botões
+  document.querySelectorAll('#at-tipo-btns .btn').forEach(b=>{ b.className = b.textContent.startsWith(tipo) ? 'btn btn-primary' : 'btn btn-secondary'; });
+  document.querySelectorAll('#at-sub-btns .btn').forEach(b=>{ b.className = 'btn btn-secondary'; b.style.fontSize='11px'; b.style.padding='6px 10px'; });
+  renderTabelaAt();
+}
+
+function filtrarAtSub(sub){
+  AT_TIPO_ATIVO = 'MALHARIA'; AT_SUB_ATIVA = sub;
+  document.querySelectorAll('#at-tipo-btns .btn').forEach(b=>{ b.className = b.textContent.startsWith('MALHARIA') ? 'btn btn-primary' : 'btn btn-secondary'; });
+  document.querySelectorAll('#at-sub-btns .btn').forEach(b=>{
+    const ativo = b.textContent.startsWith(sub);
+    b.className = ativo ? 'btn btn-primary' : 'btn btn-secondary';
+    b.style.fontSize='11px'; b.style.padding='6px 10px';
+  });
+  renderTabelaAt();
+}
+
+function limparFiltrosAt(){
+  AT_TIPO_ATIVO='TODOS'; AT_SUB_ATIVA='';
+  ['fat-prod','fat-cor','fat-tam'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  renderTabelaAt();
+}
+
+function exportarAt(modo){
+  const dados = modo==='top20' ? getAtFiltrado().slice(0,20) : getAtFiltrado();
+  if(!dados.length){ alert('Nenhum item para exportar.'); return; }
+  const ws = XLSX.utils.json_to_sheet(dados.map((d,i)=>({
+    '#': i+1, 'Produto': d.nome, 'Cor': d.cor, 'Tamanho': d.tam,
+    'Tipo': d.tipo, 'Subclassificação': d.sub, 'Necessidade (peças)': d.qtd,
+    [AT_MODO_ATUAL==='saldo'?'Estoque Disponível':'Localização']: typeof d.estoqueDisp==='number' ? d.estoqueDisp : (d.semEstoque ? 'SEM LOCAL' : 'TEM LOCAL'),
+    'Ruptura / Saldo': d.ruptura===null ? (d.semEstoque ? '-'+d.qtd : '') : d.ruptura
+  })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, modo==='top20' ? 'Top20Ofensores' : 'RelacaoGeral');
+  XLSX.writeFile(wb, modo==='top20' ? 'top20_ofensores.xlsx' : 'ofensores_geral.xlsx');
+}
+
+// drag and drop
+[['at-vendas-dropzone','at-vendas-file'],['at-pv03-dropzone','at-pv03-file'],['at-estq-dropzone','at-estq-file']].forEach(([zoneId,inputId])=>{
+  const zone = document.getElementById(zoneId);
+  if(!zone) return;
+  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev, e=>{e.preventDefault(); zone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev, e=>{e.preventDefault(); zone.classList.remove('drag');}));
+  zone.addEventListener('drop', e=>{
+    const file = e.dataTransfer.files[0];
+    if(file){ document.getElementById(inputId).files=e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
   });
 });
 </script>
