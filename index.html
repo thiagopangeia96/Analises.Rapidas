@@ -2345,7 +2345,11 @@ function processarAtendiveis(){
     AT_PEDIDOS_PERIODO = totalPedidos;
     AT_PEDIDOS_AFETADOS = nAfetados;
     AT_PEDIDOS_ATENDIVEIS = nAtendiveis;
-    AT_PEDIDOS_ATENDIVEIS_LIST = pedidosAtendiveisList;
+    AT_PEDIDOS_ATENDIVEIS_LIST_BASE = pedidosAtendiveisList; // guarda sem restrições
+    // aplica restrições ativas (se houver) na lista final
+    AT_PEDIDOS_ATENDIVEIS_LIST = AT_RESTRICOES.size > 0
+      ? pedidosAtendiveisList.filter(p=> ![...AT_RESTRICOES].some(t=> new Set(p.tipagem.split('/')).has(t)))
+      : pedidosAtendiveisList;
     renderAtendiveis(resultado, modo, exclStatusDetalhe, semPv03, exclData, exclBrinde, totalPedidos, nAfetados, nAtendiveis);
   }catch(err){
     alert('Erro ao processar: '+err.message);
@@ -2357,7 +2361,51 @@ let AT_RESULTADO = [], AT_MODO_ATUAL = 'saldo';
 let AT_TIPOS_ATIVOS = new Set(['TODOS']);  // multi-select
 let AT_SUBS_ATIVAS = new Set();           // multi-select de subgrupos
 let AT_PEDIDOS_PERIODO = 0, AT_PEDIDOS_AFETADOS = 0, AT_PEDIDOS_ATENDIVEIS = 0;
-let AT_PEDIDOS_ATENDIVEIS_LIST = [];
+let AT_PEDIDOS_ATENDIVEIS_LIST = [], AT_PEDIDOS_ATENDIVEIS_LIST_BASE = [];
+let AT_RESTRICOES = new Set(); // tipos bloqueados pelo usuário
+
+function toggleRestricao(tipo, checked){
+  if(checked) AT_RESTRICOES.add(tipo);
+  else AT_RESTRICOES.delete(tipo);
+  recalcularAtendiveisComRestricao();
+}
+
+function recalcularAtendiveisComRestricao(){
+  // Filtra a lista de atendíveis excluindo pedidos que contêm tipos restritos
+  const listaFiltrada = AT_PEDIDOS_ATENDIVEIS_LIST_BASE.filter(p=>{
+    if(AT_RESTRICOES.size === 0) return true;
+    const tiposSet = new Set(p.tipagem.split('/'));
+    return ![...AT_RESTRICOES].some(t=> tiposSet.has(t));
+  });
+  AT_PEDIDOS_ATENDIVEIS_LIST = listaFiltrada;
+  // Atualiza KPIs na tela sem re-processar tudo
+  const nRestrito = AT_PEDIDOS_ATENDIVEIS_LIST_BASE.length - listaFiltrada.length;
+  const nAtendiveis = listaFiltrada.length;
+  const total = AT_PEDIDOS_PERIODO;
+  const nAfetados = AT_PEDIDOS_AFETADOS + nRestrito;
+  const pctAt = total ? (nAtendiveis/total*100).toFixed(1) : 0;
+  const pctAf = total ? (nAfetados/total*100).toFixed(1) : 0;
+  document.querySelectorAll('#at-result .kpi').forEach((kpi, i)=>{
+    if(i===1){ kpi.querySelector('.kv').textContent = nAfetados.toLocaleString('pt-BR'); kpi.querySelector('.kp').textContent = pctAf+'% do total'; }
+    if(i===2){ kpi.querySelector('.kv').textContent = nAtendiveis.toLocaleString('pt-BR'); kpi.querySelector('.kp').textContent = pctAt+'% do total'; }
+  });
+  // atualiza aviso de restrição
+  const card = document.querySelector('#at-result .card:last-of-type');
+  if(card){
+    const avisoExist = card.querySelector('.ins.r');
+    if(AT_RESTRICOES.size > 0){
+      const txt = `<b>⚠ Restrição ativa:</b> pedidos que contêm itens de tipo <b>${[...AT_RESTRICOES].join(', ')}</b> não estão sendo considerados atendíveis.`;
+      if(avisoExist) avisoExist.innerHTML = txt;
+      else { const d=document.createElement('div'); d.className='ins r'; d.style.marginTop='8px'; d.innerHTML=txt; card.appendChild(d); }
+    } else {
+      if(avisoExist) avisoExist.remove();
+    }
+    // atualiza cor dos labels
+    card.querySelectorAll('label span').forEach(span=>{
+      span.style.color = AT_RESTRICOES.has(span.textContent.trim()) ? '#dc2626' : 'var(--txt)';
+    });
+  }
+}
 
 function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBrinde, totalPedidos, nAfetados, nAtendiveis){
   const el = document.getElementById('at-result');
@@ -2382,6 +2430,23 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
     kpi('g', nAtendiveis.toLocaleString('pt-BR'), 'Pedidos atendíveis', pctAtendiveis+'% do total') +
   '</div>';
   html += '<div class="btn-row"><button class="btn btn-primary" onclick="exportarAtendiveisList()">⬇ Exportar Atendíveis (Express primeiro → mais antigos)</button></div>';
+
+  // Restrições por tipo: checkboxes para excluir tipos que não podem ser atendidos
+  const todosTiposPresentes = [...new Set(resultado.map(d=>d.tipo))].sort();
+  html += '<div class="card" style="margin-top:12px"><div class="card-title">Restrições por Tipo <span style="font-size:10px;font-weight:400;color:var(--txt-s)">(marque os tipos que NÃO pode atender agora — os atendíveis se atualizam automaticamente)</span></div>';
+  html += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+  todosTiposPresentes.forEach(t=>{
+    const checked = AT_RESTRICOES.has(t) ? 'checked' : '';
+    html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;font-weight:600">
+      <input type="checkbox" ${checked} onchange="toggleRestricao('${t}', this.checked)" style="width:15px;height:15px;cursor:pointer;accent-color:#dc2626">
+      <span style="color:${AT_RESTRICOES.has(t)?'#dc2626':'var(--txt)'}">${t}</span>
+    </label>`;
+  });
+  html += '</div>';
+  if(AT_RESTRICOES.size > 0){
+    html += `<div class="ins r" style="margin-top:8px"><b>⚠ Restrição ativa:</b> pedidos que contêm itens de tipo <b>${[...AT_RESTRICOES].join(', ')}</b> não estão sendo considerados atendíveis.</div>`;
+  }
+  html += '</div>';
 
   html += '<div class="sec">Visão de SKUs</div>';
   html += '<div class="kgrid">'+
