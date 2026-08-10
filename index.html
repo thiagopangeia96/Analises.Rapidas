@@ -2163,6 +2163,7 @@ function tipoItem(nome){
 }
 
 function processarAtendiveis(){
+  if(!AT_VENDAS || !AT_PV03 || !AT_ESTQ){ return; } // ainda carregando
   try{
     const dataIni = document.getElementById('at-data-ini').value;
     const dataFim = document.getElementById('at-data-fim').value;
@@ -2190,18 +2191,21 @@ function processarAtendiveis(){
       if(num && !(num in dataPedido)) dataPedido[num] = ultData;
     });
 
-    // 3) Necessidade por produto+cor+tam (excluindo brindes PNG e por período/status)
+    // 3) Necessidade por produto+cor+tam + mapeamento de pedidos por SKU
     const necessidade = {};
+    const pedidosPorChave = {};   // chave -> Set de números de pedido únicos
+    const pedidosNoPeriodo = new Set(); // todos os pedidos pendentes no período
     let exclBrinde=0, exclStatus=0, exclData=0, semPv03=0;
     const exclStatusDetalhe = {};
 
     AT_VENDAS.forEach(r=>{
       const nome = r['Nome do Produto']||'';
       const t = tipoItem(nomeProdutoBase(nome));
-      if(!t){ exclBrinde++; return; }
-
       const num = parseInt(r['Número do Pedido']);
       const status = statusPedido[num];
+
+      // filtro de status (igual ao de antes, antes do filtro de data)
+      if(!t){ exclBrinde++; return; }
       if(status!==undefined && !STATUS_AT.has(status)){
         exclStatus++;
         exclStatusDetalhe[status]=(exclStatusDetalhe[status]||0)+1;
@@ -2216,6 +2220,9 @@ function processarAtendiveis(){
       if(dPed && dIni && dPed<dIni){ exclData++; return; }
       if(dPed && dFim && dPed>dFim){ exclData++; return; }
 
+      // passa pelos filtros: acumula
+      pedidosNoPeriodo.add(num);
+
       const prod = nomeProdutoBase(nome);
       const mCor = String(nome).match(/\(([^,]+),\s*([^)]+)\)\s*$/);
       const cor = mCor ? normChave(mCor[1]) : '';
@@ -2224,6 +2231,8 @@ function processarAtendiveis(){
       const qtd = Number(r['Quantidade Comprada'])||1;
       if(!necessidade[chave]) necessidade[chave]={nome:prod, cor, tam, qtd:0, tipo:t.tipo, sub:t.sub};
       necessidade[chave].qtd += qtd;
+      if(!pedidosPorChave[chave]) pedidosPorChave[chave] = new Set();
+      pedidosPorChave[chave].add(num);
     });
 
     // 4) Estoque por produto+cor+tam
@@ -2242,9 +2251,10 @@ function processarAtendiveis(){
       if(r['Local']||r['LOCAL']) estoque[chave].temLocal = true;
     });
 
-    // 5) Cruza e calcula ruptura
+    // 5) Cruza e calcula ruptura + pedidos afetados por SKU
     const resultado = Object.entries(necessidade).map(([chave, n])=>{
       const est = estoque[chave]||{saldo:0, temLocal:false};
+      const pedidosSkU = pedidosPorChave[chave] ? pedidosPorChave[chave].size : 0;
       let estoqueDisp, ruptura, semEstoque;
       if(modo==='saldo'){
         estoqueDisp = est.saldo;
@@ -2252,27 +2262,39 @@ function processarAtendiveis(){
         semEstoque = false;
       } else {
         estoqueDisp = est.temLocal ? '(tem local)' : '(sem local)';
-        ruptura = est.temLocal ? null : -n.qtd; // sem local = ruptura total
+        ruptura = est.temLocal ? null : -n.qtd;
         semEstoque = !est.temLocal;
       }
-      return {...n, estoqueDisp, ruptura, semEstoque};
+      return {...n, estoqueDisp, ruptura, semEstoque, pedidosSku:pedidosSkU};
     }).sort((a,b)=>{
       if(modo==='local'){
-        // "sem local" = ruptura confirmada → vem antes, ordenado por necessidade decrescente
-        // "tem local" = ruptura possível → vem depois, também por necessidade decrescente
         if(a.semEstoque !== b.semEstoque) return a.semEstoque ? -1 : 1;
         return b.qtd - a.qtd;
       }
-      // modo saldo: maior ruptura (mais negativo) primeiro; positivos vêm depois
       const ra = a.ruptura; const rb = b.ruptura;
       if(ra<0 && rb>=0) return -1;
       if(rb<0 && ra>=0) return 1;
       return ra - rb;
     });
 
+    // 6) Calcula pedidos afetados / atendíveis (simples: pedido é afetado se TEM pelo menos 1 SKU em ruptura)
+    const pedidosAfetados = new Set();
+    resultado.forEach(d=>{
+      const emRuptura = d.semEstoque || (d.ruptura!==null && d.ruptura<0);
+      if(emRuptura && pedidosPorChave[normChave(d.nome)+'||'+d.cor+'||'+d.tam]){
+        pedidosPorChave[normChave(d.nome)+'||'+d.cor+'||'+d.tam].forEach(p=>pedidosAfetados.add(p));
+      }
+    });
+    const totalPedidos = pedidosNoPeriodo.size;
+    const nAfetados = pedidosAfetados.size;
+    const nAtendiveis = totalPedidos - nAfetados;
+
     AT_RESULTADO = resultado;
     AT_MODO_ATUAL = modo;
-    renderAtendiveis(resultado, modo, exclStatusDetalhe, semPv03, exclData, exclBrinde);
+    AT_PEDIDOS_PERIODO = totalPedidos;
+    AT_PEDIDOS_AFETADOS = nAfetados;
+    AT_PEDIDOS_ATENDIVEIS = nAtendiveis;
+    renderAtendiveis(resultado, modo, exclStatusDetalhe, semPv03, exclData, exclBrinde, totalPedidos, nAfetados, nAtendiveis);
   }catch(err){
     alert('Erro ao processar: '+err.message);
     console.error(err);
@@ -2280,9 +2302,11 @@ function processarAtendiveis(){
 }
 
 let AT_RESULTADO = [], AT_MODO_ATUAL = 'saldo';
-let AT_TIPO_ATIVO = 'TODOS', AT_SUB_ATIVA = '';
+let AT_TIPOS_ATIVOS = new Set(['TODOS']);  // multi-select
+let AT_SUBS_ATIVAS = new Set();           // multi-select de subgrupos
+let AT_PEDIDOS_PERIODO = 0, AT_PEDIDOS_AFETADOS = 0, AT_PEDIDOS_ATENDIVEIS = 0;
 
-function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBrinde){
+function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBrinde, totalPedidos, nAfetados, nAtendiveis){
   const el = document.getElementById('at-result');
   el.style.display = 'block';
 
@@ -2290,13 +2314,22 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   const totalRupt = resultado.filter(d=>d.ruptura!==null&&d.ruptura<0).length;
   const totalOk = resultado.filter(d=>d.ruptura!==null&&d.ruptura>=0).length;
   const totalSemEst = resultado.filter(d=>d.semEstoque).length;
+  const pctAfetados = totalPedidos ? (nAfetados/totalPedidos*100).toFixed(1) : 0;
+  const pctAtendiveis = totalPedidos ? (nAtendiveis/totalPedidos*100).toFixed(1) : 0;
 
   let html = '';
-  // Aviso de exclusões
   const exclStatusStr = Object.entries(exclStatus).map(([s,n])=>`${s}: ${n}`).join(' · ');
   if(exclStatusStr) html += `<div class="ins b"><b>ℹ Excluídos por status já resolvido:</b> ${exclStatusStr}. ${semPv03} linha(s) não encontradas no PV03 (contadas como pendente por segurança). ${exclData} linha(s) fora do período. ${exclBrinde} brindes ignorados.</div>`;
 
-  html += '<div class="sec">Visão Geral</div>';
+  html += '<div class="sec">Visão de Pedidos</div>';
+  html += '<div class="ins b"><b>ℹ Metodologia:</b> um pedido é considerado "afetado pela ruptura" se tem pelo menos 1 SKU (modelo/cor/tamanho) com ruptura confirmada. "Atendível" = pedido sem nenhum SKU em ruptura — os itens dele têm estoque suficiente.</div>';
+  html += '<div class="kgrid">'+
+    kpi('b', totalPedidos.toLocaleString('pt-BR'), 'Pedidos pendentes no período') +
+    kpi('r', nAfetados.toLocaleString('pt-BR'), 'Pedidos afetados pela ruptura', pctAfetados+'% do total') +
+    kpi('g', nAtendiveis.toLocaleString('pt-BR'), 'Pedidos atendíveis', pctAtendiveis+'% do total') +
+  '</div>';
+
+  html += '<div class="sec">Visão de SKUs</div>';
   html += '<div class="kgrid">'+
     kpi('b', resultado.length.toLocaleString('pt-BR'), 'SKUs com necessidade no período') +
     kpi('o', totalNec.toLocaleString('pt-BR'), 'Total peças necessárias') +
@@ -2308,17 +2341,19 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   // Botões de tipo
   const tipos = ['TODOS','TRICOT','CALÇA','MALHARIA'];
   const subs = [...new Set(resultado.filter(d=>d.tipo==='MALHARIA').map(d=>d.sub))].sort();
-  html += '<div class="sec">Filtrar por Tipo</div>';
+  html += '<div class="sec">Filtrar por Tipo <span style="font-size:10px;color:var(--txt-s);font-weight:400">(múltipla seleção)</span></div>';
   html += '<div class="btn-row" id="at-tipo-btns">';
   tipos.forEach(t=>{
     const cnt = t==='TODOS' ? resultado.length : resultado.filter(d=>d.tipo===t).length;
-    html += `<button class="btn ${t===AT_TIPO_ATIVO?'btn-primary':'btn-secondary'}" onclick="filtrarAtTipo('${t}')">${t} (${cnt})</button>`;
+    const ativo = AT_TIPOS_ATIVOS.has(t);
+    html += `<button class="btn ${ativo?'btn-primary':'btn-secondary'}" onclick="toggleAtTipo('${t}')">${t} (${cnt})</button>`;
   });
   html += '</div>';
   html += '<div id="at-sub-btns" class="btn-row" style="margin-top:-6px">';
   subs.forEach(s=>{
     const cnt = resultado.filter(d=>d.sub===s).length;
-    html += `<button class="btn ${s===AT_SUB_ATIVA?'btn-primary':'btn-secondary'}" style="font-size:11px;padding:6px 10px" onclick="filtrarAtSub('${s}')">${s} (${cnt})</button>`;
+    const ativo = AT_SUBS_ATIVAS.has(s);
+    html += `<button class="btn ${ativo?'btn-primary':'btn-secondary'}" style="font-size:11px;padding:6px 10px" onclick="toggleAtSub('${s}')">${s} (${cnt})</button>`;
   });
   html += '</div>';
 
@@ -2326,20 +2361,22 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   html += '<div class="btn-row" style="margin-top:8px">'+
     '<button class="btn btn-primary" onclick="exportarAt(\'top20\')">⬇ Exportar Top 20 Ofensores</button>'+
     '<button class="btn btn-secondary" onclick="exportarAt(\'geral\')">⬇ Exportar Relação Geral</button>'+
+    '<button class="btn btn-secondary" onclick="criarListaContagem()">📋 Criar Lista Contagem</button>'+
     '<button class="btn btn-secondary" onclick="limparFiltrosAt()">✕ Limpar filtros</button>'+
   '</div>';
 
   // Tabela
   const colEst = modo==='saldo' ? 'Estoque Disponível' : 'Localização';
   html += '<div class="table-wrap scroll"><table id="tbl-at"><thead><tr>'+
-    '<th>#</th><th>Produto</th><th>Cor</th><th>Tam</th><th>Tipo</th><th>Sub</th><th>Necessidade</th>'+
+    '<th>#</th><th>Produto</th><th>Cor</th><th>Tam</th><th>Tipo</th><th>Sub</th>'+
+    '<th>Necessidade</th><th>Pedidos afetados</th>'+
     `<th>${colEst}</th><th>Ruptura / Saldo</th>`+
   '</tr></thead><thead class="filter-row"><tr>'+
     '<th></th>'+
     '<th><input type="text" id="fat-prod" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
     '<th><input type="text" id="fat-cor" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
     '<th><input type="text" id="fat-tam" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
-    '<th></th><th></th><th></th><th></th><th></th>'+
+    '<th></th><th></th><th></th><th></th><th></th><th></th>'+
   '</tr></thead><tbody id="tbl-at-body"></tbody></table></div>';
 
   el.innerHTML = html;
@@ -2351,9 +2388,12 @@ function getAtFiltrado(){
   const fProd = (document.getElementById('fat-prod')?.value||'').toLowerCase();
   const fCor = (document.getElementById('fat-cor')?.value||'').toLowerCase();
   const fTam = (document.getElementById('fat-tam')?.value||'').toLowerCase();
+  const todosTipos = AT_TIPOS_ATIVOS.has('TODOS');
   return AT_RESULTADO.filter(d=>{
-    if(AT_TIPO_ATIVO!=='TODOS' && d.tipo!==AT_TIPO_ATIVO) return false;
-    if(AT_SUB_ATIVA && d.sub!==AT_SUB_ATIVA) return false;
+    // filtro de tipo: se TODOS está ativo, passa tudo; senão, tipo deve estar no Set ativo
+    if(!todosTipos && !AT_TIPOS_ATIVOS.has(d.tipo)) return false;
+    // filtro de sub: se há subs selecionados, só passa quem está neles (E o tipo MALHARIA)
+    if(AT_SUBS_ATIVAS.size > 0 && (d.tipo!=='MALHARIA' || !AT_SUBS_ATIVAS.has(d.sub))) return false;
     if(fProd && !d.nome.toLowerCase().includes(fProd)) return false;
     if(fCor && !d.cor.toLowerCase().includes(fCor)) return false;
     if(fTam && !String(d.tam).toLowerCase().includes(fTam)) return false;
@@ -2370,33 +2410,94 @@ function renderTabelaAt(){
     const corTxt = rup===null ? '' : (rup<0?'color:#dc2626;font-weight:800':'color:#16a34a;font-weight:700');
     const fundo = rup===null ? (d.semEstoque?'background:#fef2f2':'') : (rup<0?'background:#fff0f0':'background:#f0fff4');
     const rupturaStr = rup===null ? (d.semEstoque?'<span class="badge br">SEM LOCAL</span>':'—') : rup;
-    return `<tr style="${fundo}"><td style="color:var(--txt-s);font-size:10px">${i+1}</td><td>${d.nome}</td><td>${d.cor}</td><td>${d.tam}</td><td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':'bg'}">${d.tipo}</span></td><td style="font-size:10px;color:var(--txt-s)">${d.sub}</td><td><b>${d.qtd.toLocaleString('pt-BR')}</b></td><td>${typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp}</td><td style="${corTxt}">${rupturaStr}</td></tr>`;
+    return `<tr style="${fundo}"><td style="color:var(--txt-s);font-size:10px">${i+1}</td><td>${d.nome}</td><td>${d.cor}</td><td>${d.tam}</td><td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':'bg'}">${d.tipo}</span></td><td style="font-size:10px;color:var(--txt-s)">${d.sub}</td><td><b>${d.qtd.toLocaleString('pt-BR')}</b></td><td style="font-size:11px;color:var(--roxo)">${(d.pedidosSku||0).toLocaleString('pt-BR')}</td><td>${typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp}</td><td style="${corTxt}">${rupturaStr}</td></tr>`;
   }).join('') || '<tr><td colspan="9" class="empty-state">Nenhum item com esses filtros.</td></tr>';
 }
 
-function filtrarAtTipo(tipo){
-  AT_TIPO_ATIVO = tipo; AT_SUB_ATIVA = '';
-  // atualiza highlight dos botões
-  document.querySelectorAll('#at-tipo-btns .btn').forEach(b=>{ b.className = b.textContent.startsWith(tipo) ? 'btn btn-primary' : 'btn btn-secondary'; });
-  document.querySelectorAll('#at-sub-btns .btn').forEach(b=>{ b.className = 'btn btn-secondary'; b.style.fontSize='11px'; b.style.padding='6px 10px'; });
-  renderTabelaAt();
-}
-
-function filtrarAtSub(sub){
-  AT_TIPO_ATIVO = 'MALHARIA'; AT_SUB_ATIVA = sub;
-  document.querySelectorAll('#at-tipo-btns .btn').forEach(b=>{ b.className = b.textContent.startsWith('MALHARIA') ? 'btn btn-primary' : 'btn btn-secondary'; });
+function _atualizaBotoesAt(){
+  document.querySelectorAll('#at-tipo-btns .btn').forEach(b=>{
+    const t = b.textContent.split(' (')[0].trim();
+    b.className = AT_TIPOS_ATIVOS.has(t) ? 'btn btn-primary' : 'btn btn-secondary';
+  });
   document.querySelectorAll('#at-sub-btns .btn').forEach(b=>{
-    const ativo = b.textContent.startsWith(sub);
-    b.className = ativo ? 'btn btn-primary' : 'btn btn-secondary';
+    const s = b.textContent.split(' (')[0].trim();
+    b.className = AT_SUBS_ATIVAS.has(s) ? 'btn btn-primary' : 'btn btn-secondary';
     b.style.fontSize='11px'; b.style.padding='6px 10px';
   });
-  renderTabelaAt();
+}
+
+function toggleAtTipo(tipo){
+  if(tipo==='TODOS'){
+    // TODOS reseta tudo
+    AT_TIPOS_ATIVOS = new Set(['TODOS']); AT_SUBS_ATIVAS = new Set();
+  } else {
+    AT_TIPOS_ATIVOS.delete('TODOS');
+    if(AT_TIPOS_ATIVOS.has(tipo)){ AT_TIPOS_ATIVOS.delete(tipo); if(!AT_TIPOS_ATIVOS.size) AT_TIPOS_ATIVOS.add('TODOS'); }
+    else { AT_TIPOS_ATIVOS.add(tipo); }
+    // se deselecionar MALHARIA, limpa subs dela
+    if(!AT_TIPOS_ATIVOS.has('MALHARIA')) AT_SUBS_ATIVAS = new Set();
+  }
+  _atualizaBotoesAt(); renderTabelaAt();
+}
+
+function toggleAtSub(sub){
+  // ao clicar num sub, garante que MALHARIA está ativa
+  AT_TIPOS_ATIVOS.delete('TODOS');
+  AT_TIPOS_ATIVOS.add('MALHARIA');
+  if(AT_SUBS_ATIVAS.has(sub)){ AT_SUBS_ATIVAS.delete(sub); }
+  else { AT_SUBS_ATIVAS.add(sub); }
+  if(!AT_TIPOS_ATIVOS.size) AT_TIPOS_ATIVOS.add('TODOS');
+  _atualizaBotoesAt(); renderTabelaAt();
 }
 
 function limparFiltrosAt(){
-  AT_TIPO_ATIVO='TODOS'; AT_SUB_ATIVA='';
+  AT_TIPOS_ATIVOS = new Set(['TODOS']); AT_SUBS_ATIVAS = new Set();
   ['fat-prod','fat-cor','fat-tam'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  renderTabelaAt();
+  _atualizaBotoesAt(); renderTabelaAt();
+}
+
+function criarListaContagem(){
+  // Pega os itens em ruptura (sem local ou saldo negativo) com filtros ativos
+  const dados = getAtFiltrado().filter(d=> d.semEstoque || (d.ruptura!==null && d.ruptura<0));
+  if(!dados.length){ alert('Nenhum item em ruptura com os filtros ativos.'); return; }
+
+  // Busca info complementar (Código/Referência e Cor formatada) na base do ESTQ01 carregado
+  // Reconstrói o mapa código e cor original a partir do AT_ESTQ
+  const infoEstq = {};
+  (AT_ESTQ||[]).forEach(r=>{
+    const desc = String(r['Descrição']||r['DESCRIÇÃO']||'').trim();
+    const corRaw = String(r['Cor']||r['COR']||'');
+    const cor = normChave(corRaw.includes(' - ') ? corRaw.split(' - ').slice(1).join(' - ') : corRaw);
+    const tam = normChave(String(r['Tam']||r['TAM']||r['Tamanho']||''));
+    const chave = normChave(desc)+'||'+cor+'||'+tam;
+    if(!infoEstq[chave]) infoEstq[chave] = {
+      codigo: r['Código']||r['CÓDIGO']||'',
+      corOriginal: corRaw,
+      filial: r['FILIAL']||'PRINCIPAL',
+      nomeGerador: r['Nome do gerador']||''
+    };
+  });
+
+  const linhas = dados.map(d=>{
+    const chave = normChave(d.nome)+'||'+d.cor+'||'+d.tam;
+    const info = infoEstq[chave]||{codigo:'', corOriginal:d.cor, filial:'PRINCIPAL', nomeGerador:''};
+    return {
+      'FILIAL': info.filial,
+      'Nome do gerador': info.nomeGerador,
+      'Código': info.codigo,
+      'Descrição': d.nome,
+      'Cor': info.corOriginal||d.cor,
+      'Tam': d.tam,
+      'Local': '',       // deixa vazio — é o propósito da lista de contagem
+      'Estoque atual': '',
+      'Empenho atual': ''
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(linhas, {header:['FILIAL','Nome do gerador','Código','Descrição','Cor','Tam','Local','Estoque atual','Empenho atual']});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ListaContagem');
+  XLSX.writeFile(wb, 'lista_contagem_ruptura.xlsx');
 }
 
 function exportarAt(modo){
@@ -2405,6 +2506,7 @@ function exportarAt(modo){
   const ws = XLSX.utils.json_to_sheet(dados.map((d,i)=>({
     '#': i+1, 'Produto': d.nome, 'Cor': d.cor, 'Tamanho': d.tam,
     'Tipo': d.tipo, 'Subclassificação': d.sub, 'Necessidade (peças)': d.qtd,
+    'Pedidos afetados (únicos)': d.pedidosSku||0,
     [AT_MODO_ATUAL==='saldo'?'Estoque Disponível':'Localização']: typeof d.estoqueDisp==='number' ? d.estoqueDisp : (d.semEstoque ? 'SEM LOCAL' : 'TEM LOCAL'),
     'Ruptura / Saldo': d.ruptura===null ? (d.semEstoque ? '-'+d.qtd : '') : d.ruptura
   })));
