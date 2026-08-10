@@ -2151,11 +2151,21 @@ document.getElementById('at-estq-file').addEventListener('change', function(e){
 });
 
 // Classificação de tipo
+// Modelos classificados como FITNESS
+const FITNESS_MODELOS = new Set([
+  'MACACAO AXIS', 'MACAQUINHO SIENNA', 'CALCA SAINT',
+  'BLUSA TANK', 'SHORT STRAP', 'TOP LUX', 'TOP HAMPTONS'
+]);
+
 function tipoItem(nome){
   const n = normChave(nome);
   if (n.endsWith('PNG')) return null; // brinde — excluído
+  // FITNESS: verifica pelo nome base do produto (sem cor/tamanho)
+  const nomeBase = normChave(nome.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  if (FITNESS_MODELOS.has(nomeBase)) return {tipo:'FITNESS', sub:nomeBase.split(' ')[0]};
   if (/TRICOT|CASACO|JAQUETA/.test(n)) return {tipo:'TRICOT', sub:'TRICOT'};
   if (/CALCA /.test(n)) return {tipo:'CALÇA', sub:'CALÇA'};
+  if (/BIQUIN/.test(n)) return {tipo:'BIQUINIS', sub:'BIQUINI'};
   // Malharia: subclassifica pela primeira palavra do nome
   const palavras = n.split(' ');
   const sub = palavras[0] || 'OUTROS';
@@ -2227,12 +2237,14 @@ function processarAtendiveis(){
 
       // passa pelos filtros: acumula
       pedidosNoPeriodo.add(num);
-      // guarda status PV03 para uso posterior na exportação
+      // guarda status PV03 + acumula tipos de produto para uso posterior na exportação
       if(!(num in pedidosInfoAux)) pedidosInfoAux[num] = {
         data: dataPedido[num]||'',
         status: statusPedido[num]||'',
-        entrega: entregaPedido[num]||''
+        entrega: entregaPedido[num]||'',
+        tipos: new Set()
       };
+      pedidosInfoAux[num].tipos.add(t.tipo); // acumula tipo desse item no pedido
 
       const prod = nomeProdutoBase(nome);
       const mCor = String(nome).match(/\(([^,]+),\s*([^)]+)\)\s*$/);
@@ -2315,7 +2327,11 @@ function processarAtendiveis(){
         let dObj = null;
         if(ds){ const [dd,mm,yyyy]=ds.split('/'); if(dd&&mm&&yyyy) dObj=new Date(`${yyyy}-${mm}-${dd}`); }
         const isExpress = /express/i.test(info.entrega||'');
-        return {num, data: ds, dObj, entrega: info.entrega||'', isExpress, status: info.status||''};
+        // tipagem: tipos únicos do pedido, em ordem canônica, separados por "/"
+        const ORDEM_TIPOS = ['FITNESS','TRICOT','CALÇA','BIQUINIS','MALHARIA'];
+        const tiposSet = info.tipos || new Set();
+        const tipagem = ORDEM_TIPOS.filter(t=>tiposSet.has(t)).join('/') || [...tiposSet].join('/') || '—';
+        return {num, data: ds, dObj, entrega: info.entrega||'', isExpress, status: info.status||'', tipagem};
       })
       .sort((a,b)=>{
         if(a.isExpress !== b.isExpress) return a.isExpress ? -1 : 1; // express primeiro
@@ -2377,7 +2393,7 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   '</div>';
 
   // Botões de tipo
-  const tipos = ['TODOS','TRICOT','CALÇA','MALHARIA'];
+  const tipos = ['TODOS','TRICOT','CALÇA','FITNESS','BIQUINIS','MALHARIA'];
   const subs = [...new Set(resultado.filter(d=>d.tipo==='MALHARIA').map(d=>d.sub))].sort();
   html += '<div class="sec">Filtrar por Tipo <span style="font-size:10px;color:var(--txt-s);font-weight:400">(múltipla seleção)</span></div>';
   html += '<div class="btn-row" id="at-tipo-btns">';
@@ -2448,7 +2464,7 @@ function renderTabelaAt(){
     const corTxt = rup===null ? '' : (rup<0?'color:#dc2626;font-weight:800':'color:#16a34a;font-weight:700');
     const fundo = rup===null ? (d.semEstoque?'background:#fef2f2':'') : (rup<0?'background:#fff0f0':'background:#f0fff4');
     const rupturaStr = rup===null ? (d.semEstoque?'<span class="badge br">SEM LOCAL</span>':'—') : rup;
-    return `<tr style="${fundo}"><td style="color:var(--txt-s);font-size:10px">${i+1}</td><td>${d.nome}</td><td>${d.cor}</td><td>${d.tam}</td><td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':'bg'}">${d.tipo}</span></td><td style="font-size:10px;color:var(--txt-s)">${d.sub}</td><td><b>${d.qtd.toLocaleString('pt-BR')}</b></td><td style="font-size:11px;color:var(--roxo)">${(d.pedidosSku||0).toLocaleString('pt-BR')}</td><td>${typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp}</td><td style="${corTxt}">${rupturaStr}</td></tr>`;
+    return `<tr style="${fundo}"><td style="color:var(--txt-s);font-size:10px">${i+1}</td><td>${d.nome}</td><td>${d.cor}</td><td>${d.tam}</td><td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':d.tipo==='FITNESS'?'b':d.tipo==='BIQUINIS'?'bg':'bg'}">${d.tipo}</span></td><td style="font-size:10px;color:var(--txt-s)">${d.sub}</td><td><b>${d.qtd.toLocaleString('pt-BR')}</b></td><td style="font-size:11px;color:var(--roxo)">${(d.pedidosSku||0).toLocaleString('pt-BR')}</td><td>${typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp}</td><td style="${corTxt}">${rupturaStr}</td></tr>`;
   }).join('') || '<tr><td colspan="9" class="empty-state">Nenhum item com esses filtros.</td></tr>';
 }
 
@@ -2500,11 +2516,11 @@ function exportarAtendiveisList(){
     '#': i+1,
     'Data do Pedido': p.data,
     'Número do Pedido': 'NVS-'+p.num,
-    'Tipo': p.isExpress ? 'EXPRESS' : 'PADRÃO',
+    'Tipo de Envio': p.isExpress ? 'EXPRESS' : 'PADRÃO',
+    'Tipagem do Pedido': p.tipagem,
     'Status PV03': p.status
   })));
-  // largura das colunas
-  ws['!cols'] = [{wch:6},{wch:14},{wch:18},{wch:12},{wch:30}];
+  ws['!cols'] = [{wch:6},{wch:14},{wch:18},{wch:12},{wch:30},{wch:30}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'PedidosAtendiveis');
   XLSX.writeFile(wb, 'pedidos_atendiveis.xlsx');
