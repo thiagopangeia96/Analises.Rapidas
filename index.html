@@ -2182,19 +2182,24 @@ function processarAtendiveis(){
       if(!(num in statusPedido)) statusPedido[num] = r['Status'];
     });
 
-    // 2) ffill de Data por pedido
+    // 2) ffill de Data + Forma de Entrega por pedido (ambas vêm só na 1ª linha do pedido no CSV)
     const dataPedido = {};
+    const entregaPedido = {};  // num -> Forma de Entrega
     let ultData = null;
     AT_VENDAS.forEach(r=>{
       if(r['Data']) ultData = r['Data'];
       const num = parseInt(r['Número do Pedido']);
-      if(num && !(num in dataPedido)) dataPedido[num] = ultData;
+      if(!num) return;
+      if(!(num in dataPedido)) dataPedido[num] = ultData;
+      // Forma de Entrega: guarda o primeiro valor não-nulo encontrado para esse pedido
+      if(r['Forma de Entrega'] && !(num in entregaPedido)) entregaPedido[num] = r['Forma de Entrega'];
     });
 
     // 3) Necessidade por produto+cor+tam + mapeamento de pedidos por SKU
     const necessidade = {};
     const pedidosPorChave = {};   // chave -> Set de números de pedido únicos
     const pedidosNoPeriodo = new Set(); // todos os pedidos pendentes no período
+    const pedidosInfoAux = {};  // num -> {data, status, entrega}
     let exclBrinde=0, exclStatus=0, exclData=0, semPv03=0;
     const exclStatusDetalhe = {};
 
@@ -2222,6 +2227,12 @@ function processarAtendiveis(){
 
       // passa pelos filtros: acumula
       pedidosNoPeriodo.add(num);
+      // guarda status PV03 para uso posterior na exportação
+      if(!(num in pedidosInfoAux)) pedidosInfoAux[num] = {
+        data: dataPedido[num]||'',
+        status: statusPedido[num]||'',
+        entrega: entregaPedido[num]||''
+      };
 
       const prod = nomeProdutoBase(nome);
       const mCor = String(nome).match(/\(([^,]+),\s*([^)]+)\)\s*$/);
@@ -2277,23 +2288,48 @@ function processarAtendiveis(){
       return ra - rb;
     });
 
-    // 6) Calcula pedidos afetados / atendíveis (simples: pedido é afetado se TEM pelo menos 1 SKU em ruptura)
+    // 6) Calcula pedidos afetados / atendíveis — critério varia conforme o modo:
+    //   LOCAL : atendível = todas as peças do pedido têm local de estoque preenchido
+    //   SALDO : atendível = todas as peças do pedido têm ruptura >= 0 (saldo cobre a necessidade)
     const pedidosAfetados = new Set();
-    resultado.forEach(d=>{
-      const emRuptura = d.semEstoque || (d.ruptura!==null && d.ruptura<0);
-      if(emRuptura && pedidosPorChave[normChave(d.nome)+'||'+d.cor+'||'+d.tam]){
-        pedidosPorChave[normChave(d.nome)+'||'+d.cor+'||'+d.tam].forEach(p=>pedidosAfetados.add(p));
-      }
+    const chavesProblema = new Set(
+      resultado.filter(d=>{
+        if(modo==='local') return d.semEstoque; // sem local = bloqueado
+        else return d.ruptura!==null && d.ruptura<0; // saldo insuficiente = bloqueado
+      }).map(d=> normChave(d.nome)+'||'+d.cor+'||'+d.tam)
+    );
+    chavesProblema.forEach(chave=>{
+      if(pedidosPorChave[chave]) pedidosPorChave[chave].forEach(p=>pedidosAfetados.add(p));
     });
     const totalPedidos = pedidosNoPeriodo.size;
     const nAfetados = pedidosAfetados.size;
     const nAtendiveis = totalPedidos - nAfetados;
+
+    // Lista dos pedidos atendíveis com info para exportação, ordenada por:
+    // 1) Express primeiro, 2) Data mais antiga primeiro
+    const pedidosAtendiveisList = [...pedidosNoPeriodo]
+      .filter(num => !pedidosAfetados.has(num))
+      .map(num => {
+        const info = pedidosInfoAux[num]||{};
+        const ds = (info.data||'').split(' ')[0];
+        let dObj = null;
+        if(ds){ const [dd,mm,yyyy]=ds.split('/'); if(dd&&mm&&yyyy) dObj=new Date(`${yyyy}-${mm}-${dd}`); }
+        const isExpress = /express/i.test(info.entrega||'');
+        return {num, data: ds, dObj, entrega: info.entrega||'', isExpress, status: info.status||''};
+      })
+      .sort((a,b)=>{
+        if(a.isExpress !== b.isExpress) return a.isExpress ? -1 : 1; // express primeiro
+        const da = a.dObj ? a.dObj.getTime() : 0;
+        const db = b.dObj ? b.dObj.getTime() : 0;
+        return da - db; // mais antigo primeiro
+      });
 
     AT_RESULTADO = resultado;
     AT_MODO_ATUAL = modo;
     AT_PEDIDOS_PERIODO = totalPedidos;
     AT_PEDIDOS_AFETADOS = nAfetados;
     AT_PEDIDOS_ATENDIVEIS = nAtendiveis;
+    AT_PEDIDOS_ATENDIVEIS_LIST = pedidosAtendiveisList;
     renderAtendiveis(resultado, modo, exclStatusDetalhe, semPv03, exclData, exclBrinde, totalPedidos, nAfetados, nAtendiveis);
   }catch(err){
     alert('Erro ao processar: '+err.message);
@@ -2305,6 +2341,7 @@ let AT_RESULTADO = [], AT_MODO_ATUAL = 'saldo';
 let AT_TIPOS_ATIVOS = new Set(['TODOS']);  // multi-select
 let AT_SUBS_ATIVAS = new Set();           // multi-select de subgrupos
 let AT_PEDIDOS_PERIODO = 0, AT_PEDIDOS_AFETADOS = 0, AT_PEDIDOS_ATENDIVEIS = 0;
+let AT_PEDIDOS_ATENDIVEIS_LIST = [];
 
 function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBrinde, totalPedidos, nAfetados, nAtendiveis){
   const el = document.getElementById('at-result');
@@ -2322,12 +2359,13 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   if(exclStatusStr) html += `<div class="ins b"><b>ℹ Excluídos por status já resolvido:</b> ${exclStatusStr}. ${semPv03} linha(s) não encontradas no PV03 (contadas como pendente por segurança). ${exclData} linha(s) fora do período. ${exclBrinde} brindes ignorados.</div>`;
 
   html += '<div class="sec">Visão de Pedidos</div>';
-  html += '<div class="ins b"><b>ℹ Metodologia:</b> um pedido é considerado "afetado pela ruptura" se tem pelo menos 1 SKU (modelo/cor/tamanho) com ruptura confirmada. "Atendível" = pedido sem nenhum SKU em ruptura — os itens dele têm estoque suficiente.</div>';
+  html += `<div class="ins b"><b>ℹ Metodologia (modo: ${modo==='local'?'Por localização':'Por saldo'}):</b> ${modo==='local'?'um pedido é "atendível" se TODAS as suas peças têm local de estoque preenchido no ESTQ01. Qualquer peça sem local bloqueia o pedido inteiro.':'um pedido é "atendível" se TODAS as suas peças têm saldo suficiente (estoque atual ≥ necessidade). Qualquer peça com saldo negativo bloqueia o pedido inteiro.'}</div>`;
   html += '<div class="kgrid">'+
     kpi('b', totalPedidos.toLocaleString('pt-BR'), 'Pedidos pendentes no período') +
     kpi('r', nAfetados.toLocaleString('pt-BR'), 'Pedidos afetados pela ruptura', pctAfetados+'% do total') +
     kpi('g', nAtendiveis.toLocaleString('pt-BR'), 'Pedidos atendíveis', pctAtendiveis+'% do total') +
   '</div>';
+  html += '<div class="btn-row"><button class="btn btn-primary" onclick="exportarAtendiveisList()">⬇ Exportar Atendíveis (Express primeiro → mais antigos)</button></div>';
 
   html += '<div class="sec">Visão de SKUs</div>';
   html += '<div class="kgrid">'+
@@ -2454,6 +2492,22 @@ function limparFiltrosAt(){
   AT_TIPOS_ATIVOS = new Set(['TODOS']); AT_SUBS_ATIVAS = new Set();
   ['fat-prod','fat-cor','fat-tam'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   _atualizaBotoesAt(); renderTabelaAt();
+}
+
+function exportarAtendiveisList(){
+  if(!AT_PEDIDOS_ATENDIVEIS_LIST.length){ alert('Nenhum pedido atendível encontrado.'); return; }
+  const ws = XLSX.utils.json_to_sheet(AT_PEDIDOS_ATENDIVEIS_LIST.map((p,i)=>({
+    '#': i+1,
+    'Data do Pedido': p.data,
+    'Número do Pedido': 'NVS-'+p.num,
+    'Tipo': p.isExpress ? 'EXPRESS' : 'PADRÃO',
+    'Status PV03': p.status
+  })));
+  // largura das colunas
+  ws['!cols'] = [{wch:6},{wch:14},{wch:18},{wch:12},{wch:30}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'PedidosAtendiveis');
+  XLSX.writeFile(wb, 'pedidos_atendiveis.xlsx');
 }
 
 function criarListaContagem(){
