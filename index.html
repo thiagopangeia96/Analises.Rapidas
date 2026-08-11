@@ -2151,6 +2151,39 @@ document.getElementById('at-estq-file').addEventListener('change', function(e){
 });
 
 // Classificação de tipo
+// Tabela de normalização de nomes: Nuvemshop → LINX (ESTQ01)
+// Necessária porque a Nuvemshop usa nomes mais descritivos que o cadastro do sistema.
+const NOME_DE_PARA = {
+  'BLUSA ALCINHAS EM TULE CORA':              'BLUSA CORA',
+  'BLUSA AMARRACAO LOLA':                     'BLUSA LOLA',
+  'BLUSA CAPA EM RENDA ZOE':                  'BLUSA ZOE',
+  'BLUSA CORSET LEXIE':                       'BLUSA LEXIE',
+  'BLUSA DECOTE PROFUNDO PEPLUM ELOISE':      'BLUSA ELOISE',
+  'BLUSA DECOTE PROFUNDO PEPLUM ELOISE - INATIVO': 'BLUSA ELOISE',
+  'BLUSA EM TULE FLORA':                      'BLUSA FLORA',
+  'BLUSA EM TULE JADE':                       'BLUSA JADE',
+  'BLUSA EM TULE MIMI':                       'BLUSA MIMI',
+  'BLUSA EM TULE NORA':                       'BLUSA NORA',
+  'BLUSA EVA TULE ESTAMPADO':                 'BLUSA EVA',
+  'BLUSA MANGA LONGA CORSET HANNA':           'BLUSA HANNA',
+  'BLUSA MANGA LONGA DALILA':                 'BLUSA DALILA',
+  'BLUSA REGATA ISY':                         'BLUSA ISY',
+  'BLUSA RENDA MANGA LONGA HELENA':           'BLUSA HELENA',
+  'CASACO JESSI':                             'CASACO JESSI',
+  'CASACO NAOMI':                             'CASACO NAOMI',
+  'CASACO TRICOT JESSI':                      'TRICOT JESSI',
+  'CASACO TRICOT NAOMI':                      'TRICOT NAOMI',
+  'SAIA BABADOS MARI':                        'SAIA MARI',
+  'SAIA DRAPEADA OLIMPIA':                    'SAIA OLIMPIA',
+  'SAIA SARJA ESTAMPADA MILA':                'SAIA MILA',
+};
+
+// Aplica a normalização no nome base do produto antes do cruzamento com o ESTQ01
+function normalizarNomeProduto(nomeBase){
+  const k = normChave(nomeBase);
+  return NOME_DE_PARA[k] || nomeBase;
+}
+
 // Modelos classificados como FITNESS
 const FITNESS_MODELOS = new Set([
   'MACACAO AXIS', 'MACAQUINHO SIENNA', 'CALCA SAINT',
@@ -2251,7 +2284,8 @@ function processarAtendiveis(){
       };
       pedidosInfoAux[num].tipos.add(t.tipo); // acumula tipo desse item no pedido
 
-      const prod = nomeProdutoBase(nome);
+      const prodRaw = nomeProdutoBase(nome);
+      const prod = normalizarNomeProduto(prodRaw); // normaliza nome Nuvemshop → LINX
       const mCor = String(nome).match(/\(([^,]+),\s*([^)]+)\)\s*$/);
       const cor = mCor ? normChave(mCor[1]) : '';
       const tam = mCor ? normChave(mCor[2]) : '';
