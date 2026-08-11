@@ -2182,14 +2182,17 @@ function processarAtendiveis(){
     const dIni = dataIni ? new Date(dataIni+'T00:00:00') : null;
     const dFim = dataFim ? new Date(dataFim+'T23:59:59') : null;
 
-    // 1) Status por pedido do PV03
+    // 1) Status por pedido do PV03 + detecta pedidos já embalados (Data conferido preenchida)
     const statusPedido = {};
+    const jaEmbalado = new Set(); // pedidos com Data conferido preenchida = já foram embalados
     AT_PV03.forEach(r=>{
       const ped = String(r['Pedidovenda']||'');
       const m = ped.match(/^(?:NVS|REV)-(\d+)$/);
       if(!m) return;
       const num = parseInt(m[1]);
       if(!(num in statusPedido)) statusPedido[num] = r['Status'];
+      // se qualquer linha desse pedido tiver Data conferido preenchida → pedido já embalado
+      if(r['Data conferido']) jaEmbalado.add(num);
     });
 
     // 2) ffill de Data + Forma de Entrega por pedido (ambas vêm só na 1ª linha do pedido no CSV)
@@ -2226,6 +2229,8 @@ function processarAtendiveis(){
         exclStatusDetalhe[status]=(exclStatusDetalhe[status]||0)+1;
         return;
       }
+      // pedido com Data conferido preenchida = já embalado, não entra na análise
+      if(jaEmbalado.has(num)){ exclStatus++; exclStatusDetalhe['JÁ EMBALADO (Data conferido preenchida)']=(exclStatusDetalhe['JÁ EMBALADO (Data conferido preenchida)']||0)+1; return; }
       if(status===undefined) semPv03++;
 
       // filtro de data
@@ -2389,6 +2394,23 @@ function recalcularAtendiveisComRestricao(){
     if(i===1){ kpi.querySelector('.kv').textContent = nAfetados.toLocaleString('pt-BR'); kpi.querySelector('.kp').textContent = pctAf+'% do total'; }
     if(i===2){ kpi.querySelector('.kv').textContent = nAtendiveis.toLocaleString('pt-BR'); kpi.querySelector('.kp').textContent = pctAt+'% do total'; }
   });
+  // atualiza breakdown de status
+  const breakdown = document.getElementById('at-status-breakdown');
+  if(breakdown){
+    const statusCount = {};
+    listaFiltrada.forEach(p=>{ statusCount[p.status||'SEM STATUS']=(statusCount[p.status||'SEM STATUS']||0)+1; });
+    const ORDEM_STATUS = ['AG. CONFERÊNCIA','AG. PRÉ NOTA','AG. PROCESSAMENTO','AG. DECISÃO DE ESTOQUE'];
+    const statusOrdenados = [...ORDEM_STATUS.filter(s=>statusCount[s]), ...Object.keys(statusCount).filter(s=>!ORDEM_STATUS.includes(s)).sort()];
+    breakdown.innerHTML = statusOrdenados.map(s=>{
+      const n = statusCount[s]||0;
+      const pct = listaFiltrada.length ? (n/listaFiltrada.length*100).toFixed(0) : 0;
+      return `<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:9px;padding:8px 14px;min-width:160px">
+        <div style="font-size:17px;font-weight:900;color:#16a34a">${n.toLocaleString('pt-BR')}</div>
+        <div style="font-size:9px;color:#166534;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">${s}</div>
+        <div style="font-size:10px;color:#6b7280;margin-top:1px">${pct}% dos atendíveis</div>
+      </div>`;
+    }).join('');
+  }
   // atualiza aviso de restrição
   const card = document.querySelector('#at-result .card:last-of-type');
   if(card){
@@ -2429,7 +2451,25 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
     kpi('r', nAfetados.toLocaleString('pt-BR'), 'Pedidos afetados pela ruptura', pctAfetados+'% do total') +
     kpi('g', nAtendiveis.toLocaleString('pt-BR'), 'Pedidos atendíveis', pctAtendiveis+'% do total') +
   '</div>';
-  html += '<div class="btn-row"><button class="btn btn-primary" onclick="exportarAtendiveisList()">⬇ Exportar Atendíveis (Express primeiro → mais antigos)</button></div>';
+
+  // Breakdown de status dentro dos atendíveis
+  const statusCount = {};
+  pedidosAtendiveisList.forEach(p=>{ statusCount[p.status||'SEM STATUS'] = (statusCount[p.status||'SEM STATUS']||0)+1; });
+  const ORDEM_STATUS = ['AG. CONFERÊNCIA','AG. PRÉ NOTA','AG. PROCESSAMENTO','AG. DECISÃO DE ESTOQUE'];
+  const statusOrdenados = [...ORDEM_STATUS.filter(s=>statusCount[s]), ...Object.keys(statusCount).filter(s=>!ORDEM_STATUS.includes(s)).sort()];
+  html += '<div id="at-status-breakdown" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
+  statusOrdenados.forEach(s=>{
+    const n = statusCount[s]||0;
+    const pct = pedidosAtendiveisList.length ? (n/pedidosAtendiveisList.length*100).toFixed(0) : 0;
+    html += `<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:9px;padding:8px 14px;min-width:160px">
+      <div style="font-size:17px;font-weight:900;color:#16a34a">${n.toLocaleString('pt-BR')}</div>
+      <div style="font-size:9px;color:#166534;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">${s}</div>
+      <div style="font-size:10px;color:#6b7280;margin-top:1px">${pct}% dos atendíveis</div>
+    </div>`;
+  });
+  html += '</div>';
+
+  html += '<div class="btn-row" style="margin-top:10px"><button class="btn btn-primary" onclick="exportarAtendiveisList()">⬇ Exportar Atendíveis (Express primeiro → mais antigos)</button></div>';
 
   // Restrições por tipo: checkboxes para excluir tipos que não podem ser atendidos
   const todosTiposPresentes = [...new Set(resultado.map(d=>d.tipo))].sort();
