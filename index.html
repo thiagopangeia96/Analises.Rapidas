@@ -2454,13 +2454,13 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
 
   // Breakdown de status dentro dos atendíveis
   const statusCount = {};
-  pedidosAtendiveisList.forEach(p=>{ statusCount[p.status||'SEM STATUS'] = (statusCount[p.status||'SEM STATUS']||0)+1; });
+  AT_PEDIDOS_ATENDIVEIS_LIST.forEach(p=>{ statusCount[p.status||'SEM STATUS'] = (statusCount[p.status||'SEM STATUS']||0)+1; });
   const ORDEM_STATUS = ['AG. CONFERÊNCIA','AG. PRÉ NOTA','AG. PROCESSAMENTO','AG. DECISÃO DE ESTOQUE'];
   const statusOrdenados = [...ORDEM_STATUS.filter(s=>statusCount[s]), ...Object.keys(statusCount).filter(s=>!ORDEM_STATUS.includes(s)).sort()];
   html += '<div id="at-status-breakdown" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
   statusOrdenados.forEach(s=>{
     const n = statusCount[s]||0;
-    const pct = pedidosAtendiveisList.length ? (n/pedidosAtendiveisList.length*100).toFixed(0) : 0;
+    const pct = AT_PEDIDOS_ATENDIVEIS_LIST.length ? (n/AT_PEDIDOS_ATENDIVEIS_LIST.length*100).toFixed(0) : 0;
     html += `<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:9px;padding:8px 14px;min-width:160px">
       <div style="font-size:17px;font-weight:900;color:#16a34a">${n.toLocaleString('pt-BR')}</div>
       <div style="font-size:9px;color:#166534;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">${s}</div>
