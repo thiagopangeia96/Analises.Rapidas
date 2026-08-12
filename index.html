@@ -152,6 +152,8 @@ tr:hover td{background:#faf9ff}
   .page:not(.active){display:none !important}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
 </head>
 <body>
 
@@ -219,16 +221,178 @@ tr:hover td{background:#faf9ff}
 
 <!-- ===================== ABA 3 · PRODUÇÃO x VENDAS (placeholder) ===================== -->
 <div class="page" id="page-producao">
-  <div class="page-title">Produção x Vendas</div>
-  <div class="page-sub">Reproduz o modelo de análise de produção x vendas.</div>
-  <div class="placeholder">
-    <div class="tag-soon">Em construção</div>
-    <div class="icon">📦</div>
-    <h3>Próxima etapa deste projeto</h3>
-    <p>Essa aba vai reproduzir a análise de produção x vendas (capacidade, ofensores, mix por oficina/MP) direto a partir dos arquivos que você anexar aqui. Mesma situação da aba de prazo: precisamos validar as regras de cálculo antes de automatizar.</p>
+
+<!-- UPLOAD -->
+<div id="pv-upload" style="padding:32px 24px;max-width:900px;margin:0 auto">
+  <div class="page-title">📦 Produção × Vendas</div>
+  <div class="page-sub">Carregue os três arquivos para gerar a análise completa.</div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 auto 24px">
+
+    <div class="upload-box" id="pv-zone-nuv"
+         ondragover="pvOnDrag(event,'zone-nuv')" ondragleave="pvOffDrag('zone-nuv')" ondrop="pvOnDrop(event,'nuv')">
+      <div style="font-size:26px;margin-bottom:8px">📦</div>
+      <div style="font-weight:800;font-size:13px;margin-bottom:4px">Pedidos Pendentes</div>
+      <div class="upload-hint">CSV da Nuvemshop · pedidos em aberto</div>
+      <label class="upload-label" style="margin-top:12px;display:inline-block;cursor:pointer">
+        Escolher CSV
+        <input type="file" accept=".csv" onchange="pvOnFile(event,'nuv')" style="display:none">
+      </label>
+      <div class="upload-filename" id="pv-fname-nuv"></div>
+    </div>
+
+    <div class="upload-box" id="pv-zone-pv3"
+         ondragover="pvOnDrag(event,'zone-pv3')" ondragleave="pvOffDrag('zone-pv3')" ondrop="pvOnDrop(event,'pv3')">
+      <div style="font-size:26px;margin-bottom:8px">📋</div>
+      <div style="font-weight:800;font-size:13px;margin-bottom:4px">PV03 — Vendas &amp; Expedição</div>
+      <div class="upload-hint">Relatório PV03 com histórico completo</div>
+      <label class="upload-label" style="margin-top:12px;display:inline-block;cursor:pointer">
+        Escolher arquivo
+        <input type="file" accept=".xls,.xlsx" onchange="pvOnFile(event,'pv3')" style="display:none">
+      </label>
+      <div class="upload-filename" id="pv-fname-pv3"></div>
+    </div>
+
+    <div class="upload-box" id="pv-zone-rec"
+         ondragover="pvOnDrag(event,'zone-rec')" ondragleave="pvOffDrag('zone-rec')" ondrop="pvOnDrop(event,'rec')">
+      <div style="font-size:26px;margin-bottom:8px">🏭</div>
+      <div style="font-weight:800;font-size:13px;margin-bottom:4px">Recebimento de Produção</div>
+      <div class="upload-hint">Planilha de recebimento das facções por OS</div>
+      <label class="upload-label" style="margin-top:12px;display:inline-block;cursor:pointer">
+        Escolher arquivo
+        <input type="file" accept=".xlsx,.xls" onchange="pvOnFile(event,'rec')" style="display:none">
+      </label>
+      <div class="upload-filename" id="pv-fname-rec"></div>
+    </div>
+
+  </div>
+
+  <div style="text-align:center">
+    <button class="btn btn-primary" id="pv-btn-analisar" onclick="pvIniciarAnalise()"
+            disabled style="opacity:.4;font-size:14px;padding:12px 36px">
+      Analisar dados →
+    </button>
+  </div>
+  <div id="pv-prog-wrap" style="display:none;max-width:500px;margin:18px auto 0">
+    <div class="prog-head"><span id="pv-prog-txt">Processando...</span></div>
+    <div class="prog-bar"><div class="prog-fill" id="pv-prog-bar" style="width:0%"></div></div>
   </div>
 </div>
 
+<!-- DASHBOARD -->
+<div id="pv-dash" style="display:none">
+
+  <!-- sub-nav -->
+  <div style="background:#fff;border-bottom:1px solid var(--roxo-cl);padding:0 20px;display:flex;align-items:center;flex-wrap:wrap;gap:0">
+    <span id="pv-periodo-label" style="font-size:11px;font-weight:700;color:var(--txt-s);padding:12px 12px 12px 0;border-right:1px solid var(--roxo-cl);margin-right:8px;white-space:nowrap"></span>
+    <button class="tab-btn active" onclick="pvSubTab('geral',this)">📊 Visão Geral</button>
+    <button class="tab-btn" onclick="pvSubTab('tempo',this)">⏱ Tempo</button>
+    <button class="tab-btn" onclick="pvSubTab('volume',this)">📦 Volumetria</button>
+    <button class="tab-btn" onclick="pvSubTab('ve',this)">💰 Vendas × Expedição</button>
+    <button class="btn btn-secondary" style="margin-left:auto;padding:5px 12px;font-size:11px" onclick="pvVoltarUpload()">↩ Nova análise</button>
+  </div>
+
+  <!-- GERAL -->
+  <div id="pv-tab-geral" style="padding:20px 24px">
+    <div style="background:var(--roxo-esc);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.7">Passivo diário acumulado</div>
+      <div id="pv-passivo-num" style="font-size:30px;font-weight:900;margin:4px 0"></div>
+      <div id="pv-passivo-desc" style="font-size:12px;opacity:.85;line-height:1.5"></div>
+    </div>
+    <div class="kgrid" style="margin-bottom:14px">
+      <div class="kpi"   ><div class="kv" id="pv-k-exp">—</div><div class="kl">Expedido / dia</div></div>
+      <div class="kpi b" ><div class="kv" id="pv-k-vend">—</div><div class="kl">Vendas / dia</div></div>
+      <div class="kpi g" ><div class="kv" id="pv-k-rec">—</div><div class="kl">Recebido produção / dia</div></div>
+      <div class="kpi o" ><div class="kv" id="pv-k-ped">—</div><div class="kl">Pedidos expedidos / dia</div></div>
+      <div class="kpi r" ><div class="kv" id="pv-k-pend">—</div><div class="kl">Itens pendentes</div></div>
+    </div>
+    <div class="sec">Triângulo Operacional</div>
+    <div class="btn-row">
+      <button class="btn btn-secondary pv-tri-btn active" onclick="pvTriPeriodo('semana',this)">Semana</button>
+      <button class="btn btn-secondary pv-tri-btn" onclick="pvTriPeriodo('mes',this)">Mês</button>
+    </div>
+    <div class="card"><canvas id="pv-chart-tri" height="110"></canvas></div>
+    <div id="pv-insight-tri" class="ins y" style="margin-bottom:14px"></div>
+    <div class="sec">Últimas 12 Semanas</div>
+    <div class="table-wrap scroll">
+      <table><thead><tr>
+        <th>Semana</th><th>Expedido</th><th>Pedidos</th><th>Recebido</th><th>Gap Rec−Exp</th>
+      </tr></thead><tbody id="pv-tbody-sem"></tbody></table>
+    </div>
+  </div>
+
+  <!-- TEMPO -->
+  <div id="pv-tab-tempo" style="display:none;padding:20px 24px">
+    <div class="kgrid" style="margin-bottom:14px">
+      <div class="kpi r"><div class="kv" id="pv-t-pm">—</div><div class="kl">Pior modelo</div><div class="kp" id="pv-t-pm-n"></div></div>
+      <div class="kpi o"><div class="kv" id="pv-t-pc">—</div><div class="kl">Pior mod+cor</div><div class="kp" id="pv-t-pc-n"></div></div>
+      <div class="kpi o"><div class="kv" id="pv-t-pt">—</div><div class="kl">Pior mod+cor+tam</div><div class="kp" id="pv-t-pt-n"></div></div>
+      <div class="kpi"  ><div class="kv" id="pv-t-mg">—</div><div class="kl">Média geral</div></div>
+    </div>
+    <div class="btn-row" style="flex-wrap:wrap;gap:6px;align-items:center">
+      <select id="pv-tempo-tab" onchange="pvRenderTempo()" style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
+        <option value="modelo">Por Modelo</option>
+        <option value="mc">Modelo + Cor</option>
+        <option value="mct">Modelo + Cor + Tam</option>
+      </select>
+      <button class="btn btn-secondary pv-tcat active" onclick="pvTCat('TODOS',this)">Todos</button>
+      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('CALÇA',this)">Calça</button>
+      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('TRICOT',this)">Tricot</button>
+      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('BIQUINI',this)">Biquíni</button>
+      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('TOP',this)">Top</button>
+      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('BODY',this)">Body</button>
+      <input type="text" placeholder="Buscar modelo..." oninput="pvTBusca(this.value)"
+             style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px">
+    </div>
+    <div class="table-wrap scroll" style="margin-top:10px">
+      <table><thead id="pv-thead-tempo"></thead><tbody id="pv-tbody-tempo"></tbody></table>
+    </div>
+  </div>
+
+  <!-- VOLUMETRIA -->
+  <div id="pv-tab-volume" style="display:none;padding:20px 24px">
+    <div class="btn-row" style="flex-wrap:wrap;gap:6px">
+      <button class="btn btn-secondary pv-vp active" onclick="pvVolP('semana',this)">Semana</button>
+      <button class="btn btn-secondary pv-vp" onclick="pvVolP('mes',this)">Mês</button>
+      <button class="btn btn-secondary pv-vp" onclick="pvVolP('dia',this)">Dia</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary pv-vt active" onclick="pvVolTab('modelo',this)">Modelo</button>
+      <button class="btn btn-secondary pv-vt" onclick="pvVolTab('mc',this)">Mod+Cor</button>
+      <button class="btn btn-secondary pv-vt" onclick="pvVolTab('mct',this)">Mod+Cor+Tam</button>
+      <select id="pv-vol-mod" onchange="pvVolMod()" style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
+        <option value="TODOS">Todos os modelos</option>
+      </select>
+    </div>
+    <div class="card" style="margin-top:10px"><canvas id="pv-chart-vol" height="110"></canvas></div>
+    <div class="table-wrap scroll" style="margin-top:10px">
+      <table><thead id="pv-thead-vol"></thead><tbody id="pv-tbody-vol"></tbody></table>
+    </div>
+  </div>
+
+  <!-- VENDAS × EXPEDIÇÃO -->
+  <div id="pv-tab-ve" style="display:none;padding:20px 24px">
+    <div class="btn-row" style="flex-wrap:wrap;gap:6px">
+      <button class="btn btn-secondary pv-vep active" onclick="pvVEP('semana',this)">Semana</button>
+      <button class="btn btn-secondary pv-vep" onclick="pvVEP('mes',this)">Mês</button>
+      <button class="btn btn-secondary pv-vep" onclick="pvVEP('dia',this)">Dia</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary pv-vet active" onclick="pvVETab('modelo',this)">Modelo</button>
+      <button class="btn btn-secondary pv-vet" onclick="pvVETab('mc',this)">Mod+Cor</button>
+      <button class="btn btn-secondary pv-vet" onclick="pvVETab('mct',this)">Mod+Cor+Tam</button>
+      <select id="pv-ve-mod" onchange="pvVEMod()" style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
+        <option value="TODOS">Todos os modelos</option>
+      </select>
+    </div>
+    <div class="card" style="margin-top:10px"><canvas id="pv-chart-ve" height="110"></canvas></div>
+    <div id="pv-insight-ve" class="ins y" style="margin-bottom:10px"></div>
+    <div class="table-wrap scroll">
+      <table><thead id="pv-thead-ve"></thead><tbody id="pv-tbody-ve"></tbody></table>
+    </div>
+  </div>
+
+</div><!-- fim pv-dash -->
+
+</div><!-- fim page-producao -->
 <!-- ===================== ABA 4 · INVENTÁRIO ===================== -->
 <div class="page" id="page-inventario">
   <div class="page-title">Consolidar Inventário</div>
@@ -577,6 +741,9 @@ dz.addEventListener('drop', e=>{
 <!-- ABA 4 LOGIC -->
 <script>
 // ===================== ABA 4 · CONSOLIDAR INVENTÁRIO =====================
+// Mapa de nomes do cadastro oficial (normChave → nome original com acentos)
+const CADASTRO_NOMES = {"BLUSA FLORA": "BLUSA FLORA", "JAQUETA STELLA": "JAQUETA  STELLA", "REGATA HOT - INATIVO": "REGATA HOT - INATIVO", "ADESIVO - PNG": "ADESIVO - PNG", "BIQUINI CORTININHA - PNG": "BIQUINI CORTININHA - PNG", "BIQUINI MARQUINHA - PNG": "BIQUINI MARQUINHA - PNG", "BIQUINI KIARA": "BIQUÍNI KIARA", "BIQUINI NINA": "BIQUÍNI NINA", "BLACK CARD - PNG": "BLACK CARD - PNG", "BLOQUINHO - PNG": "BLOQUINHO - PNG", "BLUSA HELENA": "BLUSA  HELENA", "BLUSA NORA": "BLUSA  NORA", "BLUSA ANDY": "BLUSA ANDY", "BLUSA AYLA": "BLUSA AYLA", "BLUSA CAMISA BABADOS TESTE": "BLUSA CAMISA BABADOS TESTE", "BLUSA CAROLINA": "BLUSA CAROLINA", "BLUSA CORA": "BLUSA CORA", "BLUSA CORSET TESTE": "BLUSA CORSET TESTE", "BLUSA DALILA": "BLUSA DALILA", "BLUSA DANY": "BLUSA DANY", "BLUSA ELOISE": "BLUSA ELOISE", "BLUSA EVA": "BLUSA EVA", "BLUSA HANNA": "BLUSA HANNA", "BLUSA ISY": "BLUSA ISY", "BLUSA JADE": "BLUSA JADE", "BLUSA LEXIE": "BLUSA LEXIE", "BLUSA LOLA": "BLUSA LOLA", "BLUSA MIMI": "BLUSA MIMI", "BLUSA SASHA": "BLUSA SASHA", "BLUSA VIOLA": "BLUSA VIOLA", "BLUSA ZOE": "BLUSA ZOE", "BODY AMANDA": "BODY AMANDA", "BODY AURA": "BODY AURA", "BODY BERLIM - INATIVO": "BODY BERLIM - INATIVO", "BODY CHARLY": "BODY CHARLY", "BODY CLEO": "BODY CLEO", "BODY JENNY - INATIVO": "BODY JENNY - INATIVO", "BODY MAITE": "BODY MAITÊ", "BODY MARGOT - INATIVO": "BODY MARGOT - INATIVO", "BODY MATILDA": "BODY MATILDA", "BODY OLIVIA": "BODY OLIVIA", "BODY PENELOPE": "BODY PENÉLOPE", "BODY SAKURA": "BODY SAKURA", "BODY SHARPAY - INATIVO": "BODY SHARPAY - INATIVO", "BODY SURPRESA - PNG": "BODY SURPRESA - PNG", "BODY TEREZA": "BODY TEREZA", "BODY VITORIA - INATIVO": "BODY VITORIA - INATIVO", "BRINDE REGATA BRA - PNG": "BRINDE REGATA BRA - PNG", "CALCA AMARRACAO TESTE": "CALÇA AMARRAÇÃO TESTE", "CALCA ANGELINA - INATIVO": "CALÇA ANGELINA - INATIVO", "CALCA ANITTA": "CALÇA ANITTA", "CALCA BARBARA - INATIVO": "CALÇA BÁRBARA - INATIVO", "CALCA CHER - INATIVO": "CALÇA CHER - INATIVO", "CALCA DUNA": "CALÇA DUNA", "CALCA ELINA - INATIVO": "CALÇA ELINA - INATIVO", "CALCA HOLLY - INATIVO": "CALÇA HOLLY - INATIVO", "CALCA JULLY": "CALÇA JULLY", "CALCA MIRANDA": "CALÇA MIRANDA", "CALCA NIKKI": "CALÇA NIKKI", "CALCA ORNELLA - INATIVO": "CALÇA ORNELLA - INATIVO", "CALCA SELENA": "CALÇA SELENA", "CALCA STELLA - INATIVO": "CALÇA STELLA - INATIVO", "CALCA TEDDY": "CALÇA TEDDY", "CALCA TORONTO - INATIVO": "CALÇA TORONTO - INATIVO", "CALCA TRICOT ANAHI": "CALÇA TRICOT ANAHÍ", "CALCA VENUS": "CALÇA VÊNUS", "CAMISA MALIBU - INATIVO": "CAMISA MALIBU - INATIVO", "CAMISA ORNELLA - INATIVO": "CAMISA ORNELLA - INATIVO", "CASACO JESSI": "CASACO JESSI", "CASACO NAOMI": "CASACO NAOMI", "CASACO SIENA": "CASACO SIENA", "CHAVEIRO - PNG": "CHAVEIRO - PNG", "COPO STAR - PNG": "COPO STAR - PNG", "ECOBAG - PNG": "ECOBAG - PNG", "EXCLUIR PRODUTO": "EXCLUIR PRODUTO", "INFLU CARD - PNG": "INFLU CARD - PNG", "JAQUETA BRA": "JAQUETA BRA", "JAQUETA MIRANDA - INATIVO": "JAQUETA MIRANDA - INATIVO", "LOOK SURPRESA - PNG": "LOOK SURPRESA - PNG", "MACACAO DESIRE - INATIVO": "MACACÃO DESIRÉ - INATIVO", "MACAQUITO SOLE - INATIVO": "MACAQUITO SOLÉ - INATIVO", "OCULOS - PNG": "OCULOS - PNG", "REGATA ANTONELLA": "REGATA ANTONELLA", "REGATA BR": "REGATA BR", "REGATA BRA": "REGATA BRA", "REGATA BRA ADIDAS - TESTE": "REGATA BRA ADIDAS - TESTE", "REGATA BRA RECORTE - TESTE": "REGATA BRA RECORTE - TESTE", "REGATA DUO": "REGATA DUO", "REGATA JUSTA TESTE": "REGATA JUSTA TESTE", "REGATA LUNA": "REGATA LUNA", "REGATA ZODIACO": "REGATA ZODÍACO", "SAIA ALEX": "SAIA ALEX", "SAIA ARIEL - INATIVO": "SAIA ARIEL - INATIVO", "SAIA BABADOS MARI": "SAIA BABADOS MARI", "SAIA CAPRI": "SAIA CAPRI", "SAIA ILHOS TESTE": "SAIA ILHÓS TESTE", "SAIA LIA": "SAIA LIA", "SAIA MADSON - INATIVO": "SAIA MADSON - INATIVO", "SAIA MILA": "SAIA MILA", "SAIA MILLI - INATIVO": "SAIA MILLI - INATIVO", "SAIA OLIMPIA": "SAIA OLÍMPIA", "SAIA SOFIA": "SAIA SOFIA", "SAIA TULUM TESTE": "SAIA TULUM TESTE", "SHORT ALFAIATARIA TESTE": "SHORT ALFAIATARIA TESTE", "SHORT FITNESS - TESTE": "SHORT FITNESS - TESTE", "SHORT FITNESS RVB - TESTE": "SHORT FITNESS RVB - TESTE", "SHORT GIULIA - INATIVO": "SHORT GIULIA - INATIVO", "SHORT SAVANA - INATIVO": "SHORT SAVANA - INATIVO", "TOP ALEXA - INATIVO": "TOP ALEXA - INATIVO", "TOP ALISON": "TOP ALISON", "TOP ALISSA": "TOP ALISSA", "TOP AMY": "TOP AMY", "TOP AMELIA - INATIVO": "TOP AMÉLIA - INATIVO", "TOP ANNA": "TOP ANNA", "TOP ARES": "TOP ARES", "TOP ARIEL - INATIVO": "TOP ARIEL - INATIVO", "TOP ASHLEY - INATIVO": "TOP ASHLEY - INATIVO", "TOP AURORA - INATIVO": "TOP AURORA - INATIVO", "TOP BA - INATIVO": "TOP BA - INATIVO", "TOP BARBARA - INATIVO": "TOP BARBARA - INATIVO", "TOP BELLY - INATIVO": "TOP BELLY - INATIVO", "TOP BILLIE - INATIVO": "TOP BILLIE - INATIVO", "TOP BONNIE": "TOP BONNIE", "TOP BRASIL": "TOP BRASIL", "TOP BRIZA - INATIVO": "TOP BRIZA - INATIVO", "TOP CAMILA - INATIVO": "TOP CAMILA - INATIVO", "TOP CAPRI - INATIVO": "TOP CAPRI - INATIVO", "TOP CASACO KITTY - INATIVO": "TOP CASACO KITTY - INATIVO", "TOP CATARINA - INATIVO": "TOP CATARINA - INATIVO", "TOP CECI - INATIVO": "TOP CECI - INATIVO", "TOP CHIARA - INATIVO": "TOP CHIARA - INATIVO", "TOP CLOVER": "TOP CLOVER", "TOP CORAL - INATIVO": "TOP CORAL - INATIVO", "TOP DUA - INATIVO": "TOP DUA - INATIVO", "TOP DUNA - INATIVO": "TOP DUNA - INATIVO", "TOP FITNESS - TESTE": "TOP FITNESS - TESTE", "TOP FITNESS RVB - TESTE": "TOP FITNESS RVB - TESTE", "TOP GABRIELA": "TOP GABRIELA", "TOP GRECIA - INATIVO": "TOP GRÉCIA - INATIVO", "TOP HAILEY": "TOP HAILEY", "TOP IVY - INATIVO": "TOP IVY - INATIVO", "TOP KATY": "TOP KATY", "TOP LANA": "TOP LANA", "TOP LARA - INATIVO": "TOP LARA - INATIVO", "TOP LILLY - INATIVO": "TOP LILLY - INATIVO", "TOP LUISA - INATIVO": "TOP LUISA - INATIVO", "TOP MADDY - INATIVO": "TOP MADDY - INATIVO", "TOP MADONNA - INATIVO": "TOP MADONNA - INATIVO", "TOP MAIA - INATIVO": "TOP MAIA - INATIVO", "TOP MANDI": "TOP MANDI", "TOP MARINA - INATIVO": "TOP MARINA - INATIVO", "TOP MIA": "TOP MIA", "TOP MILEY - INATIVO": "TOP MILEY - INATIVO", "TOP MILLI - INATIVO": "TOP MILLI - INATIVO", "TOP NALU - INATIVO": "TOP NALU - INATIVO", "TOP NATASHA - INATIVO": "TOP NATASHA - INATIVO", "TOP OFELIA": "TOP OFÉLIA", "TOP OLGA": "TOP OLGA", "TOP PIETRA": "TOP PIETRA", "TOP REGINA - INATIVO": "TOP REGINA - INATIVO", "TOP SABRINA": "TOP SABRINA", "TOP SASHA - INATIVO": "TOP SASHA - INATIVO", "TOP SAVANA - INATIVO": "TOP SAVANA - INATIVO", "TOP SCARLLET - INATIVO": "TOP SCARLLET - INATIVO", "TOP SIDNEY - INATIVO": "TOP SIDNEY - INATIVO", "TOP SKIN": "TOP SKIN", "TOP SURPRESA - PNG": "TOP SURPRESA - PNG", "TOP TAKADA - INATIVO": "TOP TAKADA - INATIVO", "TOP TAYLOR": "TOP TAYLOR", "TOP TRICOT ESTRELA": "TOP TRICOT ESTRELA", "TOP TRICOT LUCY": "TOP TRICOT LUCY", "TOP TULUM - INATIVO": "TOP TULUM - INATIVO", "TOP VIOLA - INATIVO": "TOP VIOLA - INATIVO", "TOP YAS": "TOP YAS", "TOP YASMIN - INATIVO": "TOP YASMIN - INATIVO", "TOP YUMI - INATIVO": "TOP YUMI - INATIVO", "TOP ZINN - INATIVO": "TOP ZINN - INATIVO", "VESTIDO ALBA": "VESTIDO ALBA", "VESTIDO ALICIA": "VESTIDO ALICIA", "VESTIDO ANANDA - INATIVO": "VESTIDO ANANDA - INATIVO", "VESTIDO ANY": "VESTIDO ANY", "VESTIDO ANY BABADOS TESTE": "VESTIDO ANY BABADOS TESTE", "VESTIDO ARIANA - INATIVO": "VESTIDO ARIANA - INATIVO", "VESTIDO BELLA": "VESTIDO BELLA", "VESTIDO BUZIOS - INATIVO": "VESTIDO BÚZIOS - INATIVO", "VESTIDO CELINA - INATIVO": "VESTIDO CELINA - INATIVO", "VESTIDO CLARICE- INATIVO": "VESTIDO CLARICE- INATIVO", "VESTIDO DONATA - INATIVO": "VESTIDO DONATA - INATIVO", "VESTIDO EMMA - INATIVO": "VESTIDO EMMA - INATIVO", "VESTIDO JASMINE - INATIVO": "VESTIDO JASMINE - INATIVO", "VESTIDO JULIETTA": "VESTIDO JULIETTA", "VESTIDO LADY - INATIVO": "VESTIDO LADY - INATIVO", "VESTIDO LIS": "VESTIDO LIS", "VESTIDO LUA": "VESTIDO LUA", "VESTIDO LULU - INATIVO": "VESTIDO LULU - INATIVO", "VESTIDO LUNA - INATIVO": "VESTIDO LUNA - INATIVO", "VESTIDO PEROLA": "VESTIDO PÉROLA", "VESTIDO SERENA - INATIVO": "VESTIDO SERENA - INATIVO", "VESTIDO ISIS - INATIVO": "VESTIDO ÍSIS - INATIVO", "TRICOT PRESENTE - PNG": "TRICOT PRESENTE - PNG", "VESTIDO DONNATELA": "VESTIDO DONNATELA", "BIQUINI CLARA": "BIQUÍNI CLARA", "BIQUINI IRIS": "BIQUÍNI IRIS", "GARRAFINHA - PNG": "GARRAFINHA - PNG", "KIT PUMP - PNG": "KIT PUMP - PNG", "MACACAO DESIRE": "MACACÃO DESIRÉ", "MACACAO AXIS": "MACACÃO ÁXIS"};
+
 // Planilha "BASE DE DADOS- PRODUTOS LINX" — carrega sozinha ao abrir o arquivo,
 // sem precisar colar link nem clicar em nada. Pra trocar de planilha no futuro,
 // troque só o ID abaixo (a parte entre /d/ e /edit na URL do Google Sheets).
@@ -878,7 +1045,9 @@ function processarVendasParaRuptura(text){
     const saldo = contado - d.qtd;
     const obs = contado===0 ? 'NÃO CONTADO' : '';
     const status = saldo < 0 ? 'RUPTURA' : 'OK';
-    return {produto:d.produto, cor:d.cor, tamanho:d.tamanho, contado, demanda:d.qtd, saldo, status, obs};
+    // resolver nome pelo cadastro oficial (com acentos e cedilha corretos)
+    const _nomeCad = CADASTRO_NOMES[d.produto] || d.produto;
+    return {produto:_nomeCad, cor:d.cor, tamanho:d.tamanho, contado, demanda:d.qtd, saldo, status, obs};
   }).sort((a,b)=> a.saldo - b.saldo);
 
   // itens que não deram match entre as duas bases (pra auditoria/visibilidade)
@@ -3438,6 +3607,446 @@ function exportarAfetadosDetalhe(){
   XLSX.utils.book_append_sheet(wb, ws, 'PedidosAfetados');
   XLSX.writeFile(wb, 'pedidos_afetados_ruptura.xlsx');
 }
+</script>
+<script>
+// ══════════════════════════════════════
+// PRODUÇÃO × VENDAS — namespace PV
+// ══════════════════════════════════════
+const PV = {
+  files:{nuv:null,pv3:null,rec:null},
+  data:{nuv:[],pv3:[],rec:[]},
+  charts:{},
+  triP:'semana', volP:'semana', volTab:'modelo', volMod:'TODOS',
+  veP:'semana', veTab:'modelo', veMod:'TODOS',
+  tCat:'TODOS', tBusca:'',
+  sortSt:{}
+};
+const PVC = {};
+
+const PV_BRINDES = ['ADESIVO','BLOQUINHO','DREAM BOX','LOOK SURPRESA','KIT PUMP',
+  'PRESENTE','OCULOS','ÓCULOS','COPO','INFLU','CHAVEIRO','BRINDE','TOP BRINDE',
+  'SAIA BRINDE','SURPRISE','PNG','CARD'];
+
+const PV_MAP = {
+  'TEDDY':'CALÇA TEDDY','DUNA':'CALÇA DUNA','NIKKI':'CALÇA NIKKI',
+  'SELENA':'CALÇA SELENA','MIRANDA':'CALÇA MIRANDA','CAPRI':'CALÇA CAPRI',
+  'JESSI':'TRICOT JESSI','NAOMI':'TRICOT NAOMI',
+  'BRA 001':'REGATA BRA','BRA 002':'REGATA BRA','BRA':'REGATA BRA',
+  'MIA':'TOP MIA','LANA':'TOP LANA','ALISON':'TOP ALISON',
+  'GABRIELA':'TOP GABRIELA','MANDI':'TOP MANDI','HAILEY':'TOP HAILEY',
+  'AMANDA':'BODY AMANDA','MATILDA':'BODY MATILDA','MAITÊ':'BODY MAITÊ',
+  'ANY':'VESTIDO ANY','PÉROLA':'VESTIDO PÉROLA','ALICIA':'VESTIDO ALICIA',
+  'LIA':'SAIA LIA','MIMI':'BLUSA MIMI','LEXIE':'BLUSA LEXIE'
+};
+
+function pvEl(id){return document.getElementById('pv-'+id);}
+function pvProg(pct,msg){pvEl('prog-bar').style.width=pct+'%';pvEl('prog-txt').textContent=msg;}
+function pvNorm(s){return String(s||'').toUpperCase().trim().replace(/^[A-Z0-9]+[-–]\s*/,'').replace(/\s*\(.*/,'').trim();}
+function pvBrinde(m){const u=String(m).toUpperCase();return PV_BRINDES.some(b=>u.includes(b));}
+function pvCat(m){
+  const u=String(m).toUpperCase();
+  if(u.includes('CALÇA')||u.includes('NIKKI')||u.includes('TEDDY')||u.includes('DUNA')||u.includes('SELENA')||u.includes('MIRANDA')||u.includes('CAPRI')) return 'CALÇA';
+  if(u.includes('TRICOT')||u.includes('JESSI')||u.includes('NAOMI')||u.includes('CASACO')) return 'TRICOT';
+  if(u.includes('BIQUINI')||u.includes('BIQUÍNI')||u.includes('MARQUINHA')||u.includes('CORTININHA')) return 'BIQUINI';
+  if(u.includes('VESTIDO')||u.includes('ANY')||u.includes('PÉROLA')||u.includes('ALICIA')) return 'VESTIDO';
+  if(u.includes('BODY')||u.includes('AMANDA')||u.includes('MATILDA')||u.includes('MAITÊ')) return 'BODY';
+  if(u.includes('TOP ')||u.includes(' TOP')||u.includes('MANDI')||u.includes('ALISON')||u.includes('MIA')||u.includes('LANA')||u.includes('GABRIELA')||u.includes('HAILEY')) return 'TOP';
+  if(u.includes('SAIA')||u.includes('LIA')) return 'SAIA';
+  if(u.includes('BLUSA')||u.includes('REGATA')||u.includes('BRA')||u.includes('MIMI')||u.includes('LEXIE')) return 'BLUSA/REGATA';
+  return 'OUTROS';
+}
+function pvBarCor(d){return d<=7?'#16a34a':d<=14?'#d97706':d<=21?'#ea580c':'#dc2626';}
+function pvBadge(d){return d<=7?'bg':d<=14?'bo':'br';}
+function pvXml(s){return s?s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'"):s;}
+function pvQ(arr,q){const s=[...arr].sort((a,b)=>a-b);return s[Math.min(Math.floor(s.length*q),s.length-1)]||0;}
+
+// ── Upload ──
+function pvOnDrag(e,id){e.preventDefault();pvEl(id).classList.add('drag');}
+function pvOffDrag(id){pvEl(id).classList.remove('drag');}
+function pvOnDrop(e,t){e.preventDefault();pvOffDrag('zone-'+t);pvHandle(e.dataTransfer.files[0],t);}
+function pvOnFile(e,t){pvHandle(e.target.files[0],t);}
+function pvHandle(file,t){
+  if(!file)return;
+  PV.files[t]=file;
+  pvEl('fname-'+t).textContent=file.name;
+  pvEl('zone-'+t).classList.add('done');
+  const ok=PV.files.nuv&&PV.files.pv3&&PV.files.rec;
+  pvEl('btn-analisar').disabled=!ok;
+  pvEl('btn-analisar').style.opacity=ok?'1':'.4';
+}
+function pvVoltarUpload(){
+  pvEl('dash').style.display='none';
+  pvEl('upload').style.display='block';
+}
+
+// ── Parser PV03 (SpreadsheetML via regex — sem DOMParser) ──
+function pvParsePV03text(text){
+  // Mesma abordagem do parseSpreadsheetMLLeve do dash:
+  // split por </Row> para nunca capturar bloco inteiro de Row
+  // Cell regex leve aplicado em cada linha separadamente
+  const cellRe = /<Cell[^>]*>(?:<Data[^>]*>([\s\S]*?)<\/Data>)?<\/Cell>/g;
+  const rows = text.split('</Row>');
+  const items = [];
+  let first = true;
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    if (row.indexOf('<Row>') === -1 && row.indexOf('<Row ') === -1) continue;
+    const vals = [];
+    cellRe.lastIndex = 0;
+    let cm;
+    while ((cm = cellRe.exec(row)) !== null) vals.push(pvXml(cm[1]) || '');
+    if (vals.length < 4) continue;
+    if (first) { first = false; continue; } // pula header
+    // col 5 = Prefat Excluído? — ignorar cancelados
+    if ((vals[5] || '').trim() === '1') continue;
+    const modelo = pvNorm(vals[8] || '');
+    if (!modelo || pvBrinde(modelo)) continue;
+    const dvStr = vals[1] || null;
+    const dcStr = vals[3] || null;
+    const dv = dvStr ? new Date(dvStr) : null;
+    const dc = dcStr ? new Date(dcStr) : null;
+    let dias = null;
+    if (dv && dc && !isNaN(dv) && !isNaN(dc)) {
+      dias = Math.round((dc - dv) / 86400000);
+      if (dias < 0) dias = null;
+    }
+    items.push({
+      status:  vals[0] || '',
+      data_venda: dv,
+      data_conf:  dc,
+      pedido:  vals[2] || '',
+      modelo,
+      tam:  (vals[9]  || '').toUpperCase().trim(),
+      cor:  (vals[10] || '').toUpperCase().trim(),
+      qtde: parseFloat(vals[13]) || 0,
+      dias_exp: dias
+    });
+  }
+  return items;
+}
+async function pvParsePV03(file){
+  const buf=await file.arrayBuffer();
+  let text;
+  try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}
+  catch(e){text=new TextDecoder('windows-1252').decode(buf);}
+  pvProg(30,'Parseando PV03...');
+  await new Promise(r=>setTimeout(r,10));
+  return pvParsePV03text(text);
+}
+
+async function pvParseRec(file){
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array',cellDates:true});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const raw=XLSX.utils.sheet_to_json(ws,{defval:''});
+  const items=[];
+  for(const r of raw){
+    let data=r['DATA'];
+    if(data instanceof Date){if(data.getFullYear()<2000)data=new Date(data.getFullYear()+1820,data.getMonth(),data.getDate());}
+    else if(typeof data==='string'){data=new Date(data);}
+    if(!data||isNaN(data))continue;
+    const peca=String(r['PEÇA']||'').toUpperCase().trim();
+    const cor=String(r['COR']||'').toUpperCase().trim();
+    const total=parseFloat(r['TOTAL'])||0;
+    const modeloNorm=PV_MAP[peca]||peca;
+    const porTam={};
+    for(const s of ['PP','P','M','G',32,34,36,38,40,42]){const v=parseFloat(r[s])||0;if(v>0)porTam[String(s)]=v;}
+    items.push({data,peca,cor,modeloNorm,total,porTam});
+  }
+  return items;
+}
+
+async function pvParseNuvem(file){
+  return new Promise(resolve=>{
+    Papa.parse(file,{header:true,delimiter:';',encoding:'ISO-8859-1',skipEmptyLines:true,
+      complete:res=>{
+        const items=[];
+        for(const r of res.data){
+          const num=r['Número do Pedido'];
+          const data=r['Data']?new Date(r['Data'].split(' ')[0].split('/').reverse().join('-')):null;
+          const nome=r['Nome do Produto']||'';
+          const modelo=nome.replace(/\s*\(.*/,'').trim().toUpperCase();
+          if(!num||!nome)continue;
+          items.push({num:'NVS-'+num,data,modelo,qtde:parseFloat(r['Quantidade Comprada'])||1});
+        }
+        resolve(items);
+      }
+    });
+  });
+}
+
+// ── Análise ──
+async function pvIniciarAnalise(){
+  pvEl('prog-wrap').style.display='block';
+  pvEl('btn-analisar').disabled=true;
+  pvProg(5,'Lendo pedidos pendentes...');
+  await new Promise(r=>setTimeout(r,50));
+  try{
+    PV.data.nuv=await pvParseNuvem(PV.files.nuv);
+    pvProg(20,'Lendo PV03...'); await new Promise(r=>setTimeout(r,50));
+    PV.data.pv3=await pvParsePV03(PV.files.pv3);
+    pvProg(65,'Lendo recebimento...'); await new Promise(r=>setTimeout(r,50));
+    PV.data.rec=await pvParseRec(PV.files.rec);
+    pvProg(80,'Calculando...'); await new Promise(r=>setTimeout(r,50));
+    pvCalcTudo();
+    pvProg(100,'Pronto!'); await new Promise(r=>setTimeout(r,300));
+    pvEl('upload').style.display='none';
+    pvEl('dash').style.display='block';
+    pvRenderTudo();
+  }catch(err){
+    console.error(err);
+    pvProg(0,'❌ Erro: '+err.message);
+    pvEl('btn-analisar').disabled=false;
+    pvEl('btn-analisar').style.opacity='1';
+  }
+}
+
+// ── Cálculos ──
+function pvPKey(data,tipo){
+  if(!data||isNaN(data))return null;
+  if(tipo==='dia') return data.toISOString().slice(0,10);
+  if(tipo==='mes') return data.toISOString().slice(0,7);
+  const d=new Date(data),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);
+  return new Date(d.setDate(diff)).toISOString().slice(0,10);
+}
+
+function pvAgrupar(pv3,rec,tipo){
+  const expP={},vendP={},pedP={},recP={};
+  for(const r of pv3){
+    const kv=pvPKey(r.data_venda,tipo);
+    if(kv) vendP[kv]=(vendP[kv]||0)+r.qtde;
+    if(r.data_conf){const ke=pvPKey(r.data_conf,tipo);if(ke){expP[ke]=(expP[ke]||0)+r.qtde;if(!pedP[ke])pedP[ke]=new Set();pedP[ke].add(r.pedido);}}
+  }
+  for(const r of rec){const kr=pvPKey(r.data,tipo);if(kr)recP[kr]=(recP[kr]||0)+r.total;}
+  const todos=new Set([...Object.keys(expP),...Object.keys(vendP),...Object.keys(recP)]);
+  return[...todos].sort().map(k=>({
+    periodo:k,expedido:Math.round(expP[k]||0),vendido:Math.round(vendP[k]||0),
+    recebido:Math.round(recP[k]||0),pedidos:pedP[k]?pedP[k].size:0,
+    gap_re:Math.round((recP[k]||0)-(expP[k]||0)),gap_ve:Math.round((expP[k]||0)-(vendP[k]||0))
+  }));
+}
+
+function pvCalcTempo(pv3,keys){
+  const g={};
+  for(const r of pv3){
+    if(r.dias_exp===null||r.dias_exp===undefined)continue;
+    const k=keys.map(x=>r[x]).join('||');
+    if(!g[k])g[k]={dias:[],modelo:r.modelo,cor:r.cor,tam:r.tam};
+    g[k].dias.push(r.dias_exp);
+  }
+  return Object.values(g).map(v=>({
+    modelo:v.modelo,cor:v.cor,tam:v.tam,n:v.dias.length,
+    media:+(v.dias.reduce((a,b)=>a+b,0)/v.dias.length).toFixed(1),
+    mediana:pvQ(v.dias,.5),p90:pvQ(v.dias,.9),cat:pvCat(v.modelo)
+  })).sort((a,b)=>b.media-a.media);
+}
+
+function pvCalcVol(pv3,rec,keys){
+  const expM={},vendM={},recM={};
+  for(const r of pv3){
+    const k=keys.map(x=>r[x]).join('||');
+    vendM[k]=(vendM[k]||0)+r.qtde;
+    if(r.data_conf)expM[k]=(expM[k]||0)+r.qtde;
+  }
+  for(const r of rec){
+    if(keys.includes('tam')){
+      for(const[tam,q]of Object.entries(r.porTam)){const k=keys.map(x=>x==='modelo'?r.modeloNorm:x==='cor'?r.cor:tam).join('||');recM[k]=(recM[k]||0)+q;}
+    }else{const k=keys.map(x=>x==='modelo'?r.modeloNorm:x==='cor'?r.cor:'').join('||');recM[k]=(recM[k]||0)+r.total;}
+  }
+  const todos=new Set([...Object.keys(expM),...Object.keys(vendM),...Object.keys(recM)]);
+  return[...todos].map(k=>{const[modelo,cor,tam]=k.split('||');
+    return{modelo:modelo||'',cor:cor||'',tam:tam||'',
+      expedido:Math.round(expM[k]||0),vendido:Math.round(vendM[k]||0),
+      recebido:Math.round(recM[k]||0),saldo:Math.round((expM[k]||0)-(vendM[k]||0))};
+  }).filter(r=>r.vendido>0||r.expedido>0||r.recebido>0).sort((a,b)=>b.vendido-a.vendido);
+}
+
+function pvCalcTudo(){
+  const pv3=PV.data.pv3,rec=PV.data.rec;
+  const dv=pv3.filter(r=>r.data_venda).map(r=>r.data_venda);
+  const dc=pv3.filter(r=>r.data_conf).map(r=>r.data_conf);
+  PVC.dt_min=new Date(dv.reduce((a,b)=>a<b?a:b,dv[0]||new Date()));
+  PVC.dt_max=new Date(dv.reduce((a,b)=>a>b?a:b,dv[0]||new Date()));
+  const dExp=new Set(dc.map(d=>d.toDateString())).size||1;
+  const dVend=new Set(dv.map(d=>d.toDateString())).size||1;
+  const dRec=new Set(rec.map(r=>r.data.toDateString())).size||1;
+  PVC.tot_exp=pv3.filter(r=>r.data_conf).reduce((s,r)=>s+r.qtde,0);
+  PVC.tot_vend=pv3.reduce((s,r)=>s+r.qtde,0);
+  PVC.tot_rec=rec.reduce((s,r)=>s+r.total,0);
+  PVC.med_exp=Math.round(PVC.tot_exp/dExp);
+  PVC.med_vend=Math.round(PVC.tot_vend/dVend);
+  PVC.med_rec=Math.round(PVC.tot_rec/dRec);
+  const pedDia={};
+  for(const r of pv3.filter(p=>p.data_conf)){const d=r.data_conf.toDateString();if(!pedDia[d])pedDia[d]=new Set();pedDia[d].add(r.pedido);}
+  const pdv=Object.values(pedDia).map(s=>s.size);
+  PVC.med_ped=Math.round(pdv.reduce((a,b)=>a+b,0)/(pdv.length||1));
+  PVC.passivo=PVC.med_vend-PVC.med_exp;
+  PVC.pend=PVC.tot_vend-PVC.tot_exp;
+  PVC.sem=pvAgrupar(pv3,rec,'semana');
+  PVC.mes=pvAgrupar(pv3,rec,'mes');
+  PVC.dia=pvAgrupar(pv3,rec,'dia');
+  PVC.tm=pvCalcTempo(pv3,['modelo']);
+  PVC.tmc=pvCalcTempo(pv3,['modelo','cor']);
+  PVC.tmct=pvCalcTempo(pv3,['modelo','cor','tam']);
+  PVC.vm=pvCalcVol(pv3,rec,['modelo']);
+  PVC.vmc=pvCalcVol(pv3,rec,['modelo','cor']);
+  PVC.vmct=pvCalcVol(pv3,rec,['modelo','cor','tam']);
+  PVC.modelos=[...new Set(pv3.map(r=>r.modelo).filter(Boolean))].sort();
+}
+
+// ── Render ──
+function pvRenderTudo(){
+  pvEl('periodo-label').textContent=`${PVC.dt_min.toLocaleDateString('pt-BR')} → ${PVC.dt_max.toLocaleDateString('pt-BR')} · ${PV.data.pv3.length.toLocaleString()} linhas`;
+  const p=PVC.passivo;
+  pvEl('passivo-num').textContent=(p>0?'+':'')+p.toLocaleString('pt-BR')+' itens/dia';
+  pvEl('passivo-desc').textContent=p>0?`Expedição média ${PVC.med_exp.toLocaleString()} | Vendas médias ${PVC.med_vend.toLocaleString()} itens/dia — o passivo acumula a cada dia.`:`Operação equilibrada.`;
+  pvEl('k-exp').textContent=PVC.med_exp.toLocaleString('pt-BR');
+  pvEl('k-vend').textContent=PVC.med_vend.toLocaleString('pt-BR');
+  pvEl('k-rec').textContent=PVC.med_rec.toLocaleString('pt-BR');
+  pvEl('k-ped').textContent=PVC.med_ped.toLocaleString('pt-BR');
+  pvEl('k-pend').textContent=Math.abs(PVC.pend).toLocaleString('pt-BR');
+  pvRenderTri(); pvRenderSem(); pvRenderTempo(); pvRenderVol(); pvRenderVE(); pvPopMod();
+}
+
+function pvChart(canvasId,datasets,labels){
+  return new Chart(pvEl(canvasId),{data:{labels,datasets},options:{responsive:true,
+    plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('pt-BR')}`}}},
+    scales:{x:{ticks:{font:{size:10},maxRotation:45},grid:{display:false}},
+            y:{ticks:{font:{size:11},callback:v=>v.toLocaleString('pt-BR')},grid:{color:'#f3f4f6'}}}}});
+}
+
+function pvRenderTri(){
+  const d=PV.triP==='semana'?PVC.sem:PVC.mes;
+  if(PV.charts.tri)PV.charts.tri.destroy();
+  PV.charts.tri=pvChart('chart-tri',[
+    {type:'bar',label:'Recebido',data:d.map(x=>x.recebido),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
+    {type:'bar',label:'Expedido',data:d.map(x=>x.expedido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
+    {type:'line',label:'Vendas',data:d.map(x=>x.vendido),borderColor:'#f59e0b',backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,tension:.3}
+  ],d.map(x=>x.periodo));
+  const u=d.slice(-3);
+  const mE=u.reduce((s,x)=>s+x.expedido,0)/u.length;
+  const mV=u.reduce((s,x)=>s+x.vendido,0)/u.length;
+  const gap=Math.round(mV-mE);
+  const el=pvEl('insight-tri');
+  el.className='ins '+(gap>0?'r':'g');
+  el.innerHTML=gap>0?`<strong>⚠ Passivo crescendo:</strong> expedição média ${Math.round(mE).toLocaleString()} vs vendas ${Math.round(mV).toLocaleString()} — diferença de ${gap.toLocaleString()} itens/período.`:`<strong>✓ Operação equilibrada</strong> nos últimos períodos.`;
+}
+
+function pvRenderSem(){
+  const tbody=pvEl('tbody-sem'); tbody.innerHTML='';
+  for(const d of PVC.sem.slice(-12).reverse()){
+    const g=d.gap_re,c=g>=0?'#16a34a':'#dc2626';
+    tbody.innerHTML+=`<tr><td>${d.periodo}</td><td>${d.expedido.toLocaleString()}</td><td>${d.pedidos.toLocaleString()}</td><td>${d.recebido.toLocaleString()}</td><td><span style="color:${c};font-weight:700">${g>=0?'+':''}${g.toLocaleString()}</span></td></tr>`;
+  }
+}
+
+function pvRenderTempo(){
+  const tab=pvEl('tempo-tab').value;
+  const d0=tab==='modelo'?PVC.tm:tab==='mc'?PVC.tmc:PVC.tmct;
+  const minN=tab==='mct'?30:tab==='mc'?20:10;
+  let d=d0.filter(r=>r.n>=minN);
+  if(PV.tCat!=='TODOS') d=d.filter(r=>r.cat===PV.tCat);
+  if(PV.tBusca) d=d.filter(r=>r.modelo.includes(PV.tBusca.toUpperCase()));
+  const maxM=Math.max(...d.map(r=>r.media),1);
+  const pior=PVC.tm[0],pm=PVC.tmc[0],pt=PVC.tmct[0];
+  const mg=PVC.tm.reduce((s,r)=>s+r.media*r.n,0)/PVC.tm.reduce((s,r)=>s+r.n,1);
+  pvEl('t-pm').textContent=pior?pior.media+'d':'—'; pvEl('t-pm-n').textContent=pior?pior.modelo:'—';
+  pvEl('t-pc').textContent=pm?pm.media+'d':'—';     pvEl('t-pc-n').textContent=pm?pm.modelo+' '+pm.cor:'—';
+  pvEl('t-pt').textContent=pt?pt.media+'d':'—';     pvEl('t-pt-n').textContent=pt?pt.modelo+' '+pt.cor+' '+pt.tam:'—';
+  pvEl('t-mg').textContent=mg.toFixed(1)+'d';
+  const cols=tab==='modelo'?['Modelo','Cat','N','Média','Mediana','P90','']:tab==='mc'?['Modelo','Cor','N','Média','Mediana','P90','']:['Modelo','Cor','Tam','N','Média','Mediana','P90',''];
+  pvEl('thead-tempo').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
+  const tbody=pvEl('tbody-tempo'); tbody.innerHTML='';
+  for(const r of d){
+    const pct=r.media/maxM*100;
+    const base=`<td>${r.n.toLocaleString()}</td><td><span class="badge ${pvBadge(r.media)}">${r.media}d</span></td><td>${r.mediana}d</td><td>${r.p90}d</td><td><div style="height:6px;background:#f3f4f6;border-radius:3px;width:80px"><div style="height:6px;width:${pct}%;background:${pvBarCor(r.media)};border-radius:3px"></div></div></td>`;
+    if(tab==='modelo') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td style="font-size:10px;color:var(--txt-s)">${r.cat}</td>${base}</tr>`;
+    else if(tab==='mc') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td>${base}</tr>`;
+    else tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.tam}</td>${base}</tr>`;
+  }
+}
+
+function pvRenderVol(){
+  const mod=PV.volMod,tab=PV.volTab,per=PV.volP;
+  const pv3=PV.data.pv3,rec=PV.data.rec;
+  const fp=mod!=='TODOS'?pv3.filter(r=>r.modelo===mod):pv3;
+  const fr=mod!=='TODOS'?rec.filter(r=>r.modeloNorm===mod||PV_MAP[r.peca]===mod):rec;
+  const dp=pvAgrupar(fp,fr,per);
+  if(PV.charts.vol)PV.charts.vol.destroy();
+  PV.charts.vol=pvChart('chart-vol',[
+    {type:'bar',label:'Recebido',data:dp.map(d=>d.recebido),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
+    {type:'bar',label:'Expedido',data:dp.map(d=>d.expedido),backgroundColor:'rgba(91,33,182,.75)',borderRadius:3},
+    {type:'line',label:'Gap Rec−Exp',data:dp.map(d=>d.gap_re),borderColor:'#f59e0b',backgroundColor:'transparent',borderWidth:2,pointRadius:3,tension:.3}
+  ],dp.map(d=>d.periodo));
+  const dados=tab==='modelo'?PVC.vm:tab==='mc'?PVC.vmc:PVC.vmct;
+  const fd=mod!=='TODOS'?dados.filter(r=>r.modelo===mod):dados;
+  const cols=tab==='modelo'?['Modelo','Vendido','Expedido','Recebido','Saldo']:tab==='mc'?['Modelo','Cor','Vendido','Expedido','Recebido','Saldo']:['Modelo','Cor','Tam','Vendido','Expedido','Recebido','Saldo'];
+  pvEl('thead-vol').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
+  const tbody=pvEl('tbody-vol'); tbody.innerHTML='';
+  for(const r of fd.slice(0,100)){
+    const sc=r.saldo>=0?'#16a34a':'#dc2626',sv=`<span style="color:${sc};font-weight:700">${r.saldo>=0?'+':''}${r.saldo.toLocaleString()}</span>`;
+    if(tab==='modelo') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td>${r.recebido.toLocaleString()}</td><td>${sv}</td></tr>`;
+    else if(tab==='mc') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td>${r.recebido.toLocaleString()}</td><td>${sv}</td></tr>`;
+    else tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.tam}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td>${r.recebido.toLocaleString()}</td><td>${sv}</td></tr>`;
+  }
+}
+
+function pvRenderVE(){
+  const mod=PV.veMod,tab=PV.veTab,per=PV.veP;
+  const fp=mod!=='TODOS'?PV.data.pv3.filter(r=>r.modelo===mod):PV.data.pv3;
+  const dp=pvAgrupar(fp,[],per);
+  if(PV.charts.ve)PV.charts.ve.destroy();
+  PV.charts.ve=pvChart('chart-ve',[
+    {type:'bar',label:'Vendas',data:dp.map(d=>d.vendido),backgroundColor:'rgba(3,105,161,.7)',borderRadius:3},
+    {type:'bar',label:'Expedido',data:dp.map(d=>d.expedido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
+    {type:'line',label:'Gap Exp−Vend',data:dp.map(d=>d.gap_ve),borderColor:'#dc2626',backgroundColor:'transparent',borderWidth:2,pointRadius:3,tension:.3}
+  ],dp.map(d=>d.periodo));
+  const u=dp.slice(-4);
+  const gm=Math.round(u.reduce((s,d)=>s+d.gap_ve,0)/(u.length||1));
+  const el=pvEl('insight-ve');
+  el.className='ins '+(gm<0?'r':'g');
+  el.innerHTML=gm<0?`<strong>Expedição abaixo das vendas:</strong> diferença média de <strong>${Math.abs(gm).toLocaleString()}</strong> itens/${per}. Passivo cresce.`:`<strong>✓ Expedição acompanhando vendas</strong>.`;
+  const dados=tab==='modelo'?PVC.vm:tab==='mc'?PVC.vmc:PVC.vmct;
+  const fd=mod!=='TODOS'?dados.filter(r=>r.modelo===mod):dados;
+  const cols=tab==='modelo'?['Modelo','Vendido','Expedido','% Exp','Pendente']:tab==='mc'?['Modelo','Cor','Vendido','Expedido','%','Pend']:['Modelo','Cor','Tam','Vendido','Expedido','%','Pend'];
+  pvEl('thead-ve').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
+  const tbody=pvEl('tbody-ve'); tbody.innerHTML='';
+  for(const r of fd.slice(0,100)){
+    const sal=r.vendido-r.expedido,pct=r.vendido>0?(r.expedido/r.vendido*100).toFixed(1):'—';
+    const pc=parseFloat(pct)>=80?'#16a34a':parseFloat(pct)>=50?'#d97706':'#dc2626';
+    const sv=`<span style="color:${sal>0?'#dc2626':'#16a34a'};font-weight:700">${sal>0?'+':''}${sal.toLocaleString()}</span>`;
+    if(tab==='modelo') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td style="color:${pc};font-weight:700">${pct}%</td><td>${sv}</td></tr>`;
+    else if(tab==='mc') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td style="color:${pc};font-weight:700">${pct}%</td><td>${sv}</td></tr>`;
+    else tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.tam}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td style="color:${pc};font-weight:700">${pct}%</td><td>${sv}</td></tr>`;
+  }
+}
+
+function pvPopMod(){
+  for(const id of['vol-mod','ve-mod']){
+    const sel=pvEl(id); sel.innerHTML='<option value="TODOS">Todos os modelos</option>';
+    PVC.modelos.forEach(m=>sel.innerHTML+=`<option value="${m}">${m}</option>`);
+  }
+}
+
+// ── Controles ──
+function pvSubTab(id,btn){
+  ['geral','tempo','volume','ve'].forEach(t=>{pvEl('tab-'+t).style.display=t===id?'block':'none';});
+  pvEl('dash').querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(id==='volume')pvRenderVol();
+  if(id==='ve')pvRenderVE();
+  if(id==='tempo')pvRenderTempo();
+}
+function pvTriPeriodo(p,btn){PV.triP=p;pvEl('dash').querySelectorAll('.pv-tri-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderTri();}
+function pvVolP(p,btn){PV.volP=p;pvEl('dash').querySelectorAll('.pv-vp').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVol();}
+function pvVolTab(t,btn){PV.volTab=t;pvEl('dash').querySelectorAll('.pv-vt').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVol();}
+function pvVolMod(){PV.volMod=pvEl('vol-mod').value;pvRenderVol();}
+function pvVEP(p,btn){PV.veP=p;pvEl('dash').querySelectorAll('.pv-vep').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVE();}
+function pvVETab(t,btn){PV.veTab=t;pvEl('dash').querySelectorAll('.pv-vet').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVE();}
+function pvVEMod(){PV.veMod=pvEl('ve-mod').value;pvRenderVE();}
+function pvTCat(c,btn){PV.tCat=c;pvEl('dash').querySelectorAll('.pv-tcat').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderTempo();}
+function pvTBusca(v){PV.tBusca=v;pvRenderTempo();}
 </script>
 
 </body>
