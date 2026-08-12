@@ -2436,6 +2436,7 @@ function processarAtendiveis(){
 }
 
 let AT_RESULTADO = [], AT_MODO_ATUAL = 'saldo';
+let AT_AGRUPAMENTO = 'detalhe'; // 'detalhe' | 'resumido' | 'simples'
 let AT_TIPOS_ATIVOS = new Set(['TODOS']);  // multi-select
 let AT_SUBS_ATIVAS = new Set();           // multi-select de subgrupos
 let AT_PEDIDOS_PERIODO = 0, AT_PEDIDOS_AFETADOS = 0, AT_PEDIDOS_ATENDIVEIS = 0;
@@ -2577,6 +2578,16 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   // Botões de tipo
   const tipos = ['TODOS','TRICOT','CALÇA','FITNESS','BIQUINIS','MALHARIA'];
   const subs = [...new Set(resultado.filter(d=>d.tipo==='MALHARIA').map(d=>d.sub))].sort();
+
+  // Seletor de agrupamento
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+  html += '<span style="font-size:11px;font-weight:700;color:var(--txt-s)">Exibir por:</span>';
+  [{v:'detalhe',l:'Detalhado (Modelo / Cor / Tamanho)'},{v:'resumido',l:'Resumido (Modelo / Cor)'},{v:'simples',l:'Simplificado (Modelo)'}].forEach(op=>{
+    const ativo = AT_AGRUPAMENTO===op.v;
+    html += `<button onclick="setAgrupamentoAt('${op.v}')" style="padding:5px 12px;border-radius:20px;border:1.5px solid ${ativo?'var(--roxo)':'#e5e7eb'};background:${ativo?'var(--roxo)':'#fff'};color:${ativo?'#fff':'var(--txt)'};font-size:11px;font-weight:${ativo?'800':'600'};cursor:pointer">${op.l}</button>`;
+  });
+  html += '</div>';
+
   html += '<div class="sec">Filtrar por Tipo <span style="font-size:10px;color:var(--txt-s);font-weight:400">(múltipla seleção)</span></div>';
   html += '<div class="btn-row" id="at-tipo-btns">';
   tipos.forEach(t=>{
@@ -2612,7 +2623,8 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
     '<th><input type="text" id="fat-prod" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
     '<th><input type="text" id="fat-cor" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
     '<th><input type="text" id="fat-tam" oninput="renderTabelaAt()" placeholder="filtrar..."></th>'+
-    '<th></th><th></th><th></th><th></th><th></th><th></th>'+
+    '<th></th><th></th><th></th><th></th><th></th>'+
+    '<th style="padding:4px 6px"><input type="text" style="width:100%;padding:4px;border:1px solid #e5e7eb;border-radius:5px;font-size:10px;background:#f5f3ff;color:var(--roxo);font-weight:800;text-align:center" id="at-total-ruptura" readonly placeholder="total"></th>'+
   '</tr></thead><tbody id="tbl-at-body"></tbody></table></div>';
 
   el.innerHTML = html;
@@ -2622,32 +2634,129 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
 
 function getAtFiltrado(){
   const fProd = (document.getElementById('fat-prod')?.value||'').toLowerCase();
-  const fCor = (document.getElementById('fat-cor')?.value||'').toLowerCase();
-  const fTam = (document.getElementById('fat-tam')?.value||'').toLowerCase();
+  const fCor  = (document.getElementById('fat-cor')?.value||'').toLowerCase();
+  const fTam  = (document.getElementById('fat-tam')?.value||'').toLowerCase();
   const todosTipos = AT_TIPOS_ATIVOS.has('TODOS');
-  return AT_RESULTADO.filter(d=>{
-    // filtro de tipo: se TODOS está ativo, passa tudo; senão, tipo deve estar no Set ativo
+  const filtradas = AT_RESULTADO.filter(d=>{
     if(!todosTipos && !AT_TIPOS_ATIVOS.has(d.tipo)) return false;
-    // filtro de sub: se há subs selecionados, só passa quem está neles (E o tipo MALHARIA)
-    if(AT_SUBS_ATIVAS.size > 0 && (d.tipo!=='MALHARIA' || !AT_SUBS_ATIVAS.has(d.sub))) return false;
+    if(AT_SUBS_ATIVAS.size>0 && (d.tipo!=='MALHARIA'||!AT_SUBS_ATIVAS.has(d.sub))) return false;
     if(fProd && !d.nome.toLowerCase().includes(fProd)) return false;
     if(fCor && !d.cor.toLowerCase().includes(fCor)) return false;
     if(fTam && !String(d.tam).toLowerCase().includes(fTam)) return false;
     return true;
   });
+  return agruparResultado(filtradas);
+}
+
+function setAgrupamentoAt(modo){
+  AT_AGRUPAMENTO = modo;
+  document.querySelectorAll('[onclick^="setAgrupamentoAt"]').forEach(btn=>{
+    const v = btn.getAttribute('onclick').match(/'(\w+)'/)?.[1];
+    const ativo = v === modo;
+    btn.style.background = ativo ? 'var(--roxo)' : '#fff';
+    btn.style.color = ativo ? '#fff' : 'var(--txt)';
+    btn.style.borderColor = ativo ? 'var(--roxo)' : '#e5e7eb';
+    btn.style.fontWeight = ativo ? '800' : '600';
+  });
+  renderTabelaAt();
+}
+
+function agruparResultado(filtradas){
+  if(AT_AGRUPAMENTO === 'detalhe') return filtradas;
+  const mapa = new Map();
+  filtradas.forEach(d=>{
+    const chave = AT_AGRUPAMENTO === 'resumido' ? d.nome+'|'+d.cor : d.nome;
+    if(!mapa.has(chave)){
+      mapa.set(chave, {
+        nome: d.nome,
+        cor: AT_AGRUPAMENTO === 'resumido' ? d.cor : '(todos os tamanhos/cores)',
+        tam: '—', tipo: d.tipo, sub: d.sub,
+        qtd: 0, pedidosSku: 0,
+        estoqueDisp: 0, ruptura: 0, semEstoque: false,
+        _temSemEstoque: false
+      });
+    }
+    const g = mapa.get(chave);
+    g.qtd += d.qtd;
+    g.pedidosSku = Math.max(g.pedidosSku, d.pedidosSku||0);
+    if(AT_MODO_ATUAL === 'local'){
+      if(d.semEstoque) g._temSemEstoque = true;
+    } else {
+      g.estoqueDisp += (typeof d.estoqueDisp==='number' ? d.estoqueDisp : 0);
+      g.ruptura += (typeof d.ruptura==='number' ? d.ruptura : 0);
+    }
+  });
+  if(AT_MODO_ATUAL === 'local'){
+    mapa.forEach(g=>{
+      g.semEstoque = g._temSemEstoque;
+      g.estoqueDisp = g.semEstoque ? '(sem local em algum tam)' : '(tem local em todos)';
+      g.ruptura = null;
+    });
+  }
+  return [...mapa.values()].sort((a,b)=>{
+    if(AT_MODO_ATUAL==='local'){
+      if(a.semEstoque!==b.semEstoque) return a.semEstoque?-1:1;
+      return b.qtd-a.qtd;
+    }
+    const ra=a.ruptura, rb=b.ruptura;
+    if(ra<0&&rb>=0) return -1; if(rb<0&&ra>=0) return 1; return ra-rb;
+  });
 }
 
 function renderTabelaAt(){
-  const dados = getAtFiltrado();
+  const filtradas = AT_RESULTADO.filter(d=>{
+    const fProd = (document.getElementById('fat-prod')?.value||'').toLowerCase();
+    const fCor  = (document.getElementById('fat-cor')?.value||'').toLowerCase();
+    const fTam  = (document.getElementById('fat-tam')?.value||'').toLowerCase();
+    const todosTipos = AT_TIPOS_ATIVOS.has('TODOS');
+    if(!todosTipos && !AT_TIPOS_ATIVOS.has(d.tipo)) return false;
+    if(AT_SUBS_ATIVAS.size>0 && (d.tipo!=='MALHARIA'||!AT_SUBS_ATIVAS.has(d.sub))) return false;
+    if(fProd && !d.nome.toLowerCase().includes(fProd)) return false;
+    if(fCor && !d.cor.toLowerCase().includes(fCor)) return false;
+    if(fTam && !String(d.tam).toLowerCase().includes(fTam)) return false;
+    return true;
+  });
+  const dados = agruparResultado(filtradas);
   const tbody = document.getElementById('tbl-at-body');
   if(!tbody) return;
+  const mostrarTam = AT_AGRUPAMENTO === 'detalhe';
+  const mostrarCor = AT_AGRUPAMENTO !== 'simples';
   tbody.innerHTML = dados.map((d,i)=>{
     const rup = d.ruptura;
-    const corTxt = rup===null ? '' : (rup<0?'color:#dc2626;font-weight:800':'color:#16a34a;font-weight:700');
-    const fundo = rup===null ? (d.semEstoque?'background:#fef2f2':'') : (rup<0?'background:#fff0f0':'background:#f0fff4');
-    const rupturaStr = rup===null ? (d.semEstoque?'<span class="badge br">SEM LOCAL</span>':'—') : rup;
-    return `<tr style="${fundo}"><td style="color:var(--txt-s);font-size:10px">${i+1}</td><td>${d.nome}</td><td>${d.cor}</td><td>${d.tam}</td><td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':d.tipo==='FITNESS'?'b':d.tipo==='BIQUINIS'?'bg':'bg'}">${d.tipo}</span></td><td style="font-size:10px;color:var(--txt-s)">${d.sub}</td><td><b>${d.qtd.toLocaleString('pt-BR')}</b></td><td style="font-size:11px;color:var(--roxo)">${(d.pedidosSku||0).toLocaleString('pt-BR')}</td><td>${typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp}</td><td style="${corTxt}">${rupturaStr}</td></tr>`;
+    const corTxt = rup===null?'':(rup<0?'color:#dc2626;font-weight:800':'color:#16a34a;font-weight:700');
+    const fundo  = rup===null?(d.semEstoque?'background:#fef2f2':''):(rup<0?'background:#fff0f0':'background:#f0fff4');
+    const rupturaStr = rup===null?(d.semEstoque?'<span class="badge br">SEM LOCAL</span>':'—'):rup.toLocaleString('pt-BR');
+    const estStr = typeof d.estoqueDisp==='number'?d.estoqueDisp.toLocaleString('pt-BR'):d.estoqueDisp;
+    return `<tr style="${fundo}">
+      <td style="color:var(--txt-s);font-size:10px">${i+1}</td>
+      <td>${d.nome}</td>
+      <td>${mostrarCor?d.cor:'<span style="color:var(--txt-s);font-size:10px">—</span>'}</td>
+      <td>${mostrarTam?d.tam:'<span style="color:var(--txt-s);font-size:10px">—</span>'}</td>
+      <td><span class="badge ${d.tipo==='CALÇA'?'bo':d.tipo==='TRICOT'?'bc':d.tipo==='FITNESS'?'b':'bg'}">${d.tipo}</span></td>
+      <td style="font-size:10px;color:var(--txt-s)">${d.sub}</td>
+      <td><b>${d.qtd.toLocaleString('pt-BR')}</b></td>
+      <td style="font-size:11px;color:var(--roxo)">${(d.pedidosSku||0).toLocaleString('pt-BR')}</td>
+      <td>${estStr}</td>
+      <td style="${corTxt}">${rupturaStr}</td>
+    </tr>`;
   }).join('') || '<tr><td colspan="9" class="empty-state">Nenhum item com esses filtros.</td></tr>';
+
+  // Atualiza totalizador de ruptura na coluna de filtro
+  const totalRup = dados.reduce((s,d)=> typeof d.ruptura==='number' ? s+d.ruptura : s, 0);
+  const totalNec = dados.reduce((s,d)=> s+(d.qtd||0), 0);
+  const elTot = document.getElementById('at-total-ruptura');
+  if(elTot){
+    if(AT_MODO_ATUAL==='saldo'){
+      elTot.value = (totalRup<0?'':'+')+totalRup.toLocaleString('pt-BR');
+      elTot.style.color = totalRup<0 ? '#dc2626' : '#16a34a';
+      elTot.title = `Ruptura total (filtro ativo): ${totalRup.toLocaleString('pt-BR')} peças\nNecessidade total: ${totalNec.toLocaleString('pt-BR')} peças`;
+    } else {
+      const semLocal = dados.filter(d=>d.semEstoque).length;
+      elTot.value = `${semLocal} sem local`;
+      elTot.style.color = semLocal>0 ? '#dc2626' : '#16a34a';
+      elTot.title = `${semLocal} SKU(s) sem localização no filtro ativo`;
+    }
+  }
 }
 
 function _atualizaBotoesAt(){
