@@ -199,7 +199,92 @@ tr:hover td{background:#faf9ff}
       <div class="upload-hint">Colunas: Status, Data, Pedidovenda, Data conferido...</div>
       <div class="upload-filename" id="pv03-filename"></div>
     </div>
+    <!-- Upload CSV Vendas Nuvemshop (para análise Express) -->
+    <div class="upload-box" id="nvs-vendas-dropzone" style="margin-top:10px">
+      <label class="upload-label" for="nvs-vendas-file">🛍️ Escolher CSV de Vendas · Nuvemshop</label>
+      <input type="file" id="nvs-vendas-file" accept=".csv">
+      <div class="upload-hint">Para análise de pedidos Express (coluna Y) — obrigatório junto com o PV03.</div>
+      <div class="upload-filename" id="nvs-vendas-filename"></div>
+    </div>
+    <!-- Botão analisar Express — só ativo quando os 2 arquivos estão carregados -->
+    <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+      <button id="exp-btn-analisar" class="btn btn-primary" onclick="expAnalisar()"
+        disabled style="opacity:.4;padding:9px 24px;font-size:13px">
+        🚀 Analisar Express
+      </button>
+      <span id="exp-status-pv03" style="font-size:12px;color:var(--txt-s)">⬜ PV03 não carregado</span>
+      <span id="exp-status-csv"  style="font-size:12px;color:var(--txt-s)">⬜ CSV de Vendas não carregado</span>
+    </div>
+
     <div id="boxlink-result" style="display:none"></div>
+
+    <!-- Seção Express -->
+    <div id="express-section" style="display:none;margin-top:20px">
+      <div class="sec" style="margin-top:0">🚀 Pedidos Express — Análise de Atraso</div>
+
+      <!-- KPIs Express -->
+      <div class="kgrid" style="margin-bottom:14px">
+        <div class="kpi r"><div class="kv" id="exp-total">—</div><div class="kl">Pendentes Express</div></div>
+        <div class="kpi r"><div class="kv" id="exp-atrasados">—</div><div class="kl">Em atraso (&gt;7 d.u.)</div><div class="kp" id="exp-atrasados-pct"></div></div>
+        <div class="kpi o"><div class="kv" id="exp-media-dias">—</div><div class="kl">Tempo médio de atendimento</div></div>
+        <div class="kpi" style="border-top-color:var(--roxo)"><div class="kv" id="exp-periodo-pior">—</div><div class="kl">Período que mais puxa a média</div></div>
+      </div>
+
+      <!-- Gráfico de barras: pendentes por período -->
+      <div class="sec">Distribuição de pedidos Express pendentes por data</div>
+      <div class="card" style="margin-bottom:14px"><canvas id="exp-chart-periodos" height="100"></canvas></div>
+
+      <!-- Tabela com escada de atraso -->
+      <div class="sec">Relação detalhada — escada de atraso</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+        <select id="exp-agrup" onchange="expFiltrar()" style="padding:6px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
+          <option value="dia">Por dia</option>
+          <option value="semana">Por semana</option>
+          <option value="mes">Por mês</option>
+        </select>
+        <button class="btn btn-secondary" onclick="expSelecionarTodos()" style="font-size:11px;padding:5px 12px">Selecionar todos</button>
+        <button class="btn btn-secondary" onclick="expLimparSelecao()" style="font-size:11px;padding:5px 12px">Limpar seleção</button>
+        <span style="margin-left:8px;font-size:11px;color:var(--txt-s);font-weight:600">Filtrar período:</span>
+        <input type="date" id="exp-dt-ini" style="padding:5px 8px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px">
+        <span style="font-size:11px;color:var(--txt-s)">até</span>
+        <input type="date" id="exp-dt-fim" style="padding:5px 8px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px">
+        <button class="btn btn-primary" onclick="expFiltrarPeriodo()" style="font-size:11px;padding:5px 14px">Filtrar</button>
+        <button class="btn btn-secondary" onclick="expLimparFiltroData()" style="font-size:11px;padding:5px 10px">✕ Limpar</button>
+      </div>
+      <div class="table-wrap scroll" style="margin-bottom:16px">
+        <table>
+          <thead><tr>
+            <th style="width:32px"></th>
+            <th>Período</th>
+            <th class="num">Pedidos Express Pendentes</th>
+            <th class="num">Dias úteis em atraso</th>
+            <th class="num">% do total pendente</th>
+            <th>Nível</th>
+          </tr></thead>
+          <tbody id="exp-tbody-periodos"></tbody>
+        </table>
+      </div>
+
+      <!-- Painel de itens pendentes -->
+      <div id="exp-itens-panel">
+        <div class="sec" id="exp-itens-titulo">Itens pendentes — seleção</div>
+        <div class="table-wrap scroll">
+          <table>
+            <thead><tr>
+              <th>Pedido</th><th>Data</th><th>Produto</th><th>Cor</th><th>Tam</th><th class="num">Qtde</th><th>Status PV03</th>
+            </tr></thead>
+            <tbody id="exp-tbody-itens"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn btn-secondary" onclick="expExportarItens()" style="font-size:12px">⬇ Exportar itens selecionados (.xlsx)</button>
+        </div>
+      </div>
+
+      <!-- Maiores ofensores -->
+      <div class="sec">Maiores ofensores — produtos que mais aparecem nos pedidos Express pendentes</div>
+      <div class="card" style="margin-bottom:14px"><canvas id="exp-chart-ofensores" height="100"></canvas></div>
+    </div>
   </div>
 
   <div id="prazo-sub-market" class="prazo-sub" style="display:none">
@@ -221,50 +306,62 @@ tr:hover td{background:#faf9ff}
 
 <!-- ===================== ABA 3 · PRODUÇÃO x VENDAS (placeholder) ===================== -->
 <div class="page" id="page-producao">
+<!-- ===== ABA: PRODUÇÃO × VENDAS ===== -->
 
 <!-- UPLOAD -->
-<div id="pv-upload" style="padding:32px 24px;max-width:900px;margin:0 auto">
+<div id="pv-upload" style="padding:32px 24px;max-width:960px;margin:0 auto">
   <div class="page-title">📦 Produção × Vendas</div>
-  <div class="page-sub">Carregue os três arquivos para gerar a análise completa.</div>
+  <div class="page-sub">Carregue os três arquivos para gerar a análise completa de gargalos, alocação e fila de atendimento.</div>
 
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 auto 24px">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0">
 
     <div class="upload-box" id="pv-zone-nuv"
          ondragover="pvOnDrag(event,'zone-nuv')" ondragleave="pvOffDrag('zone-nuv')" ondrop="pvOnDrop(event,'nuv')">
-      <div style="font-size:26px;margin-bottom:8px">📦</div>
+      <div style="font-size:28px;margin-bottom:8px">📦</div>
       <div style="font-weight:800;font-size:13px;margin-bottom:4px">Pedidos Pendentes</div>
       <div class="upload-hint">CSV da Nuvemshop · pedidos em aberto</div>
-      <label class="upload-label" style="margin-top:12px;display:inline-block;cursor:pointer">
-        Escolher CSV
-        <input type="file" accept=".csv" onchange="pvOnFile(event,'nuv')" style="display:none">
+      <label class="upload-label" style="margin-top:12px">Escolher CSV
+        <input type="file" accept=".csv" onchange="pvOnFile(event,'nuv')">
       </label>
       <div class="upload-filename" id="pv-fname-nuv"></div>
     </div>
 
     <div class="upload-box" id="pv-zone-pv3"
          ondragover="pvOnDrag(event,'zone-pv3')" ondragleave="pvOffDrag('zone-pv3')" ondrop="pvOnDrop(event,'pv3')">
-      <div style="font-size:26px;margin-bottom:8px">📋</div>
+      <div style="font-size:28px;margin-bottom:8px">📋</div>
       <div style="font-weight:800;font-size:13px;margin-bottom:4px">PV03 — Vendas &amp; Expedição</div>
       <div class="upload-hint">Relatório PV03 com histórico completo</div>
-      <label class="upload-label" style="margin-top:12px;display:inline-block;cursor:pointer">
-        Escolher arquivo
-        <input type="file" accept=".xls,.xlsx" onchange="pvOnFile(event,'pv3')" style="display:none">
+      <label class="upload-label" style="margin-top:12px">Escolher arquivo
+        <input type="file" accept=".xls,.xlsx" onchange="pvOnFile(event,'pv3')">
       </label>
       <div class="upload-filename" id="pv-fname-pv3"></div>
     </div>
 
     <div class="upload-box" id="pv-zone-rec"
          ondragover="pvOnDrag(event,'zone-rec')" ondragleave="pvOffDrag('zone-rec')" ondrop="pvOnDrop(event,'rec')">
-      <div style="font-size:26px;margin-bottom:8px">🏭</div>
+      <div style="font-size:28px;margin-bottom:8px">🏭</div>
       <div style="font-weight:800;font-size:13px;margin-bottom:4px">Recebimento de Produção</div>
       <div class="upload-hint">Planilha de recebimento das facções por OS</div>
-      <label class="upload-label" style="margin-top:12px;display:inline-block;cursor:pointer">
-        Escolher arquivo
-        <input type="file" accept=".xlsx,.xls" onchange="pvOnFile(event,'rec')" style="display:none">
+      <label class="upload-label" style="margin-top:12px">Escolher arquivo
+        <input type="file" accept=".xlsx,.xls" onchange="pvOnFile(event,'rec')">
       </label>
       <div class="upload-filename" id="pv-fname-rec"></div>
     </div>
 
+  </div>
+
+  <!-- Meta semanal -->
+  <div style="background:#fff;border:1.5px solid var(--roxo-cl);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
+    <div style="font-size:20px">🎯</div>
+    <div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:2px">Meta semanal de produção</div>
+      <div style="font-size:12px;color:var(--txt-s)">Usado para calcular performance de volume semanal recebido</div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <input type="number" id="pv-meta-semanal" value="30000" min="1000" step="1000"
+             style="width:120px;padding:8px 12px;border:1.5px solid var(--roxo-cl);border-radius:8px;font-size:14px;font-weight:700;color:var(--txt);text-align:right">
+      <span style="font-size:13px;color:var(--txt-s)">peças/semana</span>
+    </div>
   </div>
 
   <div style="text-align:center">
@@ -273,6 +370,7 @@ tr:hover td{background:#faf9ff}
       Analisar dados →
     </button>
   </div>
+
   <div id="pv-prog-wrap" style="display:none;max-width:500px;margin:18px auto 0">
     <div class="prog-head"><span id="pv-prog-txt">Processando...</span></div>
     <div class="prog-bar"><div class="prog-fill" id="pv-prog-bar" style="width:0%"></div></div>
@@ -282,118 +380,299 @@ tr:hover td{background:#faf9ff}
 <!-- DASHBOARD -->
 <div id="pv-dash" style="display:none">
 
-  <!-- sub-nav -->
-  <div style="background:#fff;border-bottom:1px solid var(--roxo-cl);padding:0 20px;display:flex;align-items:center;flex-wrap:wrap;gap:0">
+  <!-- SUB-NAV -->
+  <div style="background:#fff;border-bottom:1px solid var(--roxo-cl);padding:0 20px;display:flex;align-items:center;flex-wrap:wrap">
     <span id="pv-periodo-label" style="font-size:11px;font-weight:700;color:var(--txt-s);padding:12px 12px 12px 0;border-right:1px solid var(--roxo-cl);margin-right:8px;white-space:nowrap"></span>
-    <button class="tab-btn active" onclick="pvSubTab('geral',this)">📊 Visão Geral</button>
-    <button class="tab-btn" onclick="pvSubTab('tempo',this)">⏱ Tempo</button>
-    <button class="tab-btn" onclick="pvSubTab('volume',this)">📦 Volumetria</button>
-    <button class="tab-btn" onclick="pvSubTab('ve',this)">💰 Vendas × Expedição</button>
+    <button class="tab-btn active" onclick="pvSubTab('resumo',this)">📋 Resumo Geral</button>
+    <button class="tab-btn" onclick="pvSubTab('geral',this)">📊 Visão Geral</button>
+    <button class="tab-btn" onclick="pvSubTab('alocacao',this)">⚖️ Gargalo de Alocação</button>
+    <button class="tab-btn" onclick="pvSubTab('status',this)">🔄 Status dos Pedidos</button>
+    <button class="tab-btn" onclick="pvSubTab('fila',this)">⏱ Fila &amp; Tempo</button>
     <button class="btn btn-secondary" style="margin-left:auto;padding:5px 12px;font-size:11px" onclick="pvVoltarUpload()">↩ Nova análise</button>
   </div>
 
-  <!-- GERAL -->
-  <div id="pv-tab-geral" style="padding:20px 24px">
-    <div style="background:var(--roxo-esc);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.7">Passivo diário acumulado</div>
-      <div id="pv-passivo-num" style="font-size:30px;font-weight:900;margin:4px 0"></div>
-      <div id="pv-passivo-desc" style="font-size:12px;opacity:.85;line-height:1.5"></div>
+  <!-- ══════════════════════════════════════
+       ABA 1 — RESUMO GERAL
+  ══════════════════════════════════════ -->
+  <div id="pv-tab-resumo" style="padding:24px">
+
+    <!-- Headline -->
+    <div id="pv-resumo-headline" style="background:linear-gradient(135deg,rgba(91,33,182,.07),rgba(220,38,38,.07));border:1px solid rgba(91,33,182,.25);border-radius:12px;padding:20px 24px;margin-bottom:20px;font-size:14px;line-height:1.7"></div>
+
+    <!-- 4 cards de insight -->
+    <div class="kgrid" style="margin-bottom:20px">
+      <div class="kpi" style="border-top-color:var(--ok)">
+        <div class="kv" id="pv-r-vol-semana">—</div>
+        <div class="kl">Semanas batendo meta</div>
+        <div class="kp" id="pv-r-vol-sub"></div>
+      </div>
+      <div class="kpi r">
+        <div class="kv" id="pv-r-gargalo-n">—</div>
+        <div class="kl">Produtos com déficit</div>
+        <div class="kp" id="pv-r-gargalo-sub"></div>
+      </div>
+      <div class="kpi r">
+        <div class="kv" id="pv-r-travado">—</div>
+        <div class="kl">Peças travadas</div>
+        <div class="kp" id="pv-r-travado-sub"></div>
+      </div>
+      <div class="kpi o">
+        <div class="kv" id="pv-r-prazo">—</div>
+        <div class="kl">Prazo mediano (dias)</div>
+        <div class="kp" id="pv-r-prazo-sub"></div>
+      </div>
     </div>
-    <div class="kgrid" style="margin-bottom:14px">
-      <div class="kpi"   ><div class="kv" id="pv-k-exp">—</div><div class="kl">Expedido / dia</div></div>
-      <div class="kpi b" ><div class="kv" id="pv-k-vend">—</div><div class="kl">Vendas / dia</div></div>
-      <div class="kpi g" ><div class="kv" id="pv-k-rec">—</div><div class="kl">Recebido produção / dia</div></div>
-      <div class="kpi o" ><div class="kv" id="pv-k-ped">—</div><div class="kl">Pedidos expedidos / dia</div></div>
-      <div class="kpi r" ><div class="kv" id="pv-k-pend">—</div><div class="kl">Itens pendentes</div></div>
+
+    <!-- Peças por pedido — tendência -->
+    <div class="sec">Peças por pedido: tendência e projeção</div>
+    <div class="card" style="margin-bottom:16px">
+      <canvas id="pv-chart-pecas-pedido" height="100"></canvas>
     </div>
-    <div class="sec">Triângulo Operacional</div>
-    <div class="btn-row">
-      <button class="btn btn-secondary pv-tri-btn active" onclick="pvTriPeriodo('semana',this)">Semana</button>
-      <button class="btn btn-secondary pv-tri-btn" onclick="pvTriPeriodo('mes',this)">Mês</button>
-    </div>
-    <div class="card"><canvas id="pv-chart-tri" height="110"></canvas></div>
-    <div id="pv-insight-tri" class="ins y" style="margin-bottom:14px"></div>
-    <div class="sec">Últimas 12 Semanas</div>
+    <div id="pv-insight-pecas" class="ins y" style="margin-bottom:20px"></div>
+
+    <!-- Resumo dos top gargalos -->
+    <div class="sec">Top gargalos — ação necessária</div>
     <div class="table-wrap scroll">
-      <table><thead><tr>
-        <th>Semana</th><th>Expedido</th><th>Pedidos</th><th>Recebido</th><th>Gap Rec−Exp</th>
-      </tr></thead><tbody id="pv-tbody-sem"></tbody></table>
+      <table>
+        <thead><tr>
+          <th>Produto</th><th>Vendido</th><th>Recebido</th><th>Gap</th><th>Peças travadas</th>
+        </tr></thead>
+        <tbody id="pv-tbody-resumo-gargalos"></tbody>
+      </table>
     </div>
   </div>
 
-  <!-- TEMPO -->
-  <div id="pv-tab-tempo" style="display:none;padding:20px 24px">
-    <div class="kgrid" style="margin-bottom:14px">
-      <div class="kpi r"><div class="kv" id="pv-t-pm">—</div><div class="kl">Pior modelo</div><div class="kp" id="pv-t-pm-n"></div></div>
-      <div class="kpi o"><div class="kv" id="pv-t-pc">—</div><div class="kl">Pior mod+cor</div><div class="kp" id="pv-t-pc-n"></div></div>
-      <div class="kpi o"><div class="kv" id="pv-t-pt">—</div><div class="kl">Pior mod+cor+tam</div><div class="kp" id="pv-t-pt-n"></div></div>
-      <div class="kpi"  ><div class="kv" id="pv-t-mg">—</div><div class="kl">Média geral</div></div>
-    </div>
-    <div class="btn-row" style="flex-wrap:wrap;gap:6px;align-items:center">
-      <select id="pv-tempo-tab" onchange="pvRenderTempo()" style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
-        <option value="modelo">Por Modelo</option>
-        <option value="mc">Modelo + Cor</option>
-        <option value="mct">Modelo + Cor + Tam</option>
-      </select>
-      <button class="btn btn-secondary pv-tcat active" onclick="pvTCat('TODOS',this)">Todos</button>
-      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('CALÇA',this)">Calça</button>
-      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('TRICOT',this)">Tricot</button>
-      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('BIQUINI',this)">Biquíni</button>
-      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('TOP',this)">Top</button>
-      <button class="btn btn-secondary pv-tcat" onclick="pvTCat('BODY',this)">Body</button>
-      <input type="text" placeholder="Buscar modelo..." oninput="pvTBusca(this.value)"
-             style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px">
-    </div>
-    <div class="table-wrap scroll" style="margin-top:10px">
-      <table><thead id="pv-thead-tempo"></thead><tbody id="pv-tbody-tempo"></tbody></table>
-    </div>
-  </div>
+  <!-- ══════════════════════════════════════
+       ABA 2 — VISÃO GERAL
+  ══════════════════════════════════════ -->
+  <div id="pv-tab-geral" style="display:none;padding:24px">
 
-  <!-- VOLUMETRIA -->
-  <div id="pv-tab-volume" style="display:none;padding:20px 24px">
-    <div class="btn-row" style="flex-wrap:wrap;gap:6px">
-      <button class="btn btn-secondary pv-vp active" onclick="pvVolP('semana',this)">Semana</button>
-      <button class="btn btn-secondary pv-vp" onclick="pvVolP('mes',this)">Mês</button>
-      <button class="btn btn-secondary pv-vp" onclick="pvVolP('dia',this)">Dia</button>
-      <span style="flex:1"></span>
-      <button class="btn btn-secondary pv-vt active" onclick="pvVolTab('modelo',this)">Modelo</button>
-      <button class="btn btn-secondary pv-vt" onclick="pvVolTab('mc',this)">Mod+Cor</button>
-      <button class="btn btn-secondary pv-vt" onclick="pvVolTab('mct',this)">Mod+Cor+Tam</button>
-      <select id="pv-vol-mod" onchange="pvVolMod()" style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
-        <option value="TODOS">Todos os modelos</option>
-      </select>
+    <!-- Volume semanal vs meta -->
+    <div class="sec">Volume semanal recebido vs meta
+      <span id="pv-meta-label" style="font-size:11px;font-weight:600;color:var(--txt-s);margin-left:8px"></span>
     </div>
-    <div class="card" style="margin-top:10px"><canvas id="pv-chart-vol" height="110"></canvas></div>
-    <div class="table-wrap scroll" style="margin-top:10px">
-      <table><thead id="pv-thead-vol"></thead><tbody id="pv-tbody-vol"></tbody></table>
+    <div id="pv-insight-vol" class="ins g" style="margin-bottom:12px"></div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-vol-semanal" height="110"></canvas>
     </div>
-  </div>
 
-  <!-- VENDAS × EXPEDIÇÃO -->
-  <div id="pv-tab-ve" style="display:none;padding:20px 24px">
-    <div class="btn-row" style="flex-wrap:wrap;gap:6px">
-      <button class="btn btn-secondary pv-vep active" onclick="pvVEP('semana',this)">Semana</button>
-      <button class="btn btn-secondary pv-vep" onclick="pvVEP('mes',this)">Mês</button>
-      <button class="btn btn-secondary pv-vep" onclick="pvVEP('dia',this)">Dia</button>
-      <span style="flex:1"></span>
-      <button class="btn btn-secondary pv-vet active" onclick="pvVETab('modelo',this)">Modelo</button>
-      <button class="btn btn-secondary pv-vet" onclick="pvVETab('mc',this)">Mod+Cor</button>
-      <button class="btn btn-secondary pv-vet" onclick="pvVETab('mct',this)">Mod+Cor+Tam</button>
-      <select id="pv-ve-mod" onchange="pvVEMod()" style="padding:7px 10px;border:1.5px solid var(--roxo-cl);border-radius:7px;font-size:12px;font-weight:700">
-        <option value="TODOS">Todos os modelos</option>
-      </select>
+    <!-- Top déficit / excesso lado a lado -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div>
+        <div class="sec" style="color:var(--bad)">Top 10 — Maior déficit</div>
+        <div class="card" style="padding:12px"><canvas id="pv-chart-deficit" height="220"></canvas></div>
+      </div>
+      <div>
+        <div class="sec" style="color:var(--blue)">Top 10 — Maior excesso</div>
+        <div class="card" style="padding:12px"><canvas id="pv-chart-excesso" height="220"></canvas></div>
+      </div>
     </div>
-    <div class="card" style="margin-top:10px"><canvas id="pv-chart-ve" height="110"></canvas></div>
-    <div id="pv-insight-ve" class="ins y" style="margin-bottom:10px"></div>
+
+    <!-- Vendido vs Recebido top gargalos -->
+    <div class="sec">Vendido × Recebido — top gargalos</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-vend-rec" height="130"></canvas>
+    </div>
+
+    <!-- Mapa completo -->
+    <div class="sec">Mapa completo — todos os produtos (déficit → excesso)</div>
     <div class="table-wrap scroll">
-      <table><thead id="pv-thead-ve"></thead><tbody id="pv-tbody-ve"></tbody></table>
+      <table>
+        <thead><tr>
+          <th>Produto</th><th class="num">Vendido</th><th class="num">Recebido</th>
+          <th class="num">Gap</th><th>Barra</th><th class="num">Travado</th>
+        </tr></thead>
+        <tbody id="pv-tbody-mapa"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       ABA 3 — GARGALO DE ALOCAÇÃO
+  ══════════════════════════════════════ -->
+  <div id="pv-tab-alocacao" style="display:none;padding:24px">
+
+    <!-- KPIs alocação -->
+    <div class="kgrid" style="margin-bottom:20px">
+      <div class="kpi r">
+        <div class="kv" id="pv-a-deficit-total">—</div>
+        <div class="kl">Total em déficit (peças)</div>
+      </div>
+      <div class="kpi b">
+        <div class="kv" id="pv-a-excesso-total">—</div>
+        <div class="kl">Total em excesso (peças)</div>
+      </div>
+      <div class="kpi o">
+        <div class="kv" id="pv-a-n-deficit">—</div>
+        <div class="kl">Produtos com déficit</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--blue)">
+        <div class="kv" id="pv-a-n-excesso">—</div>
+        <div class="kl">Produtos com excesso</div>
+      </div>
+    </div>
+
+    <div id="pv-insight-alocacao" class="ins y" style="margin-bottom:20px"></div>
+
+    <!-- Checagem por cor -->
+    <div class="sec">Checagem por cor — excesso se sustenta na grade?</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-cor" height="130"></canvas>
+    </div>
+
+    <!-- Concentração do excesso -->
+    <div class="sec">Concentração do excesso — top 5 produtos</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-concentracao" height="100"></canvas>
+    </div>
+
+    <!-- Tabela completa por cor -->
+    <div class="sec">Detalhe por produto + cor</div>
+    <div style="margin-bottom:10px">
+      <input type="text" id="pv-aloc-busca" oninput="pvAlocBusca(this.value)"
+             placeholder="Buscar produto..."
+             style="padding:7px 12px;border:1.5px solid var(--roxo-cl);border-radius:8px;font-size:12px;width:220px">
+    </div>
+    <div class="table-wrap scroll">
+      <table>
+        <thead><tr>
+          <th>Produto</th><th>Cor</th><th class="num">Vendido</th>
+          <th class="num">Recebido</th><th class="num">Gap</th><th>Status</th>
+        </tr></thead>
+        <tbody id="pv-tbody-aloc"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       ABA 4 — STATUS DOS PEDIDOS
+  ══════════════════════════════════════ -->
+  <div id="pv-tab-status" style="display:none;padding:24px">
+
+    <!-- Glossário de status -->
+    <div class="sec">Glossário de status</div>
+    <div id="pv-glossario" style="margin-bottom:20px"></div>
+
+    <!-- Gráficos status lado a lado -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div>
+        <div class="sec">Volume em peças por status</div>
+        <div class="card" style="padding:12px"><canvas id="pv-chart-status-pecas" height="200"></canvas></div>
+      </div>
+      <div>
+        <div class="sec">Total de pedidos por status</div>
+        <div class="card" style="padding:12px"><canvas id="pv-chart-status-pedidos" height="200"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Consequências por produto -->
+    <div class="sec">Consequências de ruptura por produto</div>
+    <div class="table-wrap scroll" style="margin-bottom:20px">
+      <table>
+        <thead><tr>
+          <th>Produto</th><th class="num">Stockout</th><th class="num">Suspenso</th>
+          <th class="num">Parcial</th><th class="num">Total travado</th>
+        </tr></thead>
+        <tbody id="pv-tbody-consequencias"></tbody>
+      </table>
+    </div>
+
+    <!-- Peças por pedido + tamanho do pedido vs tempo/trava -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div class="sec">Peças por pedido — tendência mensal</div>
+        <div class="card" style="padding:12px"><canvas id="pv-chart-pecas-mes" height="200"></canvas></div>
+      </div>
+      <div>
+        <div class="sec">Tamanho do pedido × tempo e trava</div>
+        <div class="card" style="padding:12px"><canvas id="pv-chart-tam-pedido" height="200"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       ABA 5 — FILA & TEMPO DE ATENDIMENTO
+  ══════════════════════════════════════ -->
+  <div id="pv-tab-fila" style="display:none;padding:24px">
+
+    <!-- KPIs fila -->
+    <div class="kgrid" style="margin-bottom:20px">
+      <div class="kpi o">
+        <div class="kv" id="pv-f-mediana">—</div>
+        <div class="kl">Prazo mediano (dias)</div>
+        <div class="kp">metade dos pedidos demora mais</div>
+      </div>
+      <div class="kpi r">
+        <div class="kv" id="pv-f-parados">—</div>
+        <div class="kl">Pedidos ainda parados</div>
+        <div class="kp" id="pv-f-parados-pct"></div>
+      </div>
+      <div class="kpi r">
+        <div class="kv" id="pv-f-criticos">—</div>
+        <div class="kl">Travados criticamente</div>
+        <div class="kp">29+ dias parados</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--roxo)">
+        <div class="kv" id="pv-f-saida-dia">—</div>
+        <div class="kl">Saldo líquido / dia</div>
+        <div class="kp" id="pv-f-saida-sub"></div>
+      </div>
+    </div>
+
+    <div id="pv-insight-fila" class="ins r" style="margin-bottom:20px"></div>
+
+    <!-- Distribuição tempo de embalagem -->
+    <div class="sec">Distribuição do tempo de embalagem</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-dist-tempo" height="110"></canvas>
+    </div>
+
+    <!-- Com / sem produto-problema -->
+    <div class="sec">A prova — mesmo tamanho de pedido, com e sem produto-problema</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-prob-vs-ok" height="110"></canvas>
+    </div>
+
+    <!-- Ranking: quem mais segura pedido -->
+    <div class="sec">Ranking — produtos que mais seguram pedidos</div>
+    <div class="table-wrap scroll" style="margin-bottom:20px">
+      <table>
+        <thead><tr>
+          <th>Produto</th><th class="num">Pedidos travados</th>
+          <th class="num">% do total parado</th><th>Barra</th>
+        </tr></thead>
+        <tbody id="pv-tbody-ranking"></tbody>
+      </table>
+    </div>
+
+    <!-- Por dentro do maior gargalo -->
+    <div class="sec" id="pv-titulo-dentro">Por dentro do maior gargalo</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-dentro" height="110"></canvas>
+    </div>
+
+    <!-- Capacidade por dia da semana -->
+    <div class="sec">Capacidade por dia da semana</div>
+    <div class="card" style="margin-bottom:20px">
+      <canvas id="pv-chart-dia-semana" height="100"></canvas>
+    </div>
+
+    <!-- Diagnóstico e plano -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div class="sec">Diagnóstico — causas</div>
+        <div id="pv-diagnostico" style="background:#fff;border:1px solid var(--roxo-cl);border-radius:10px;padding:16px"></div>
+      </div>
+      <div>
+        <div class="sec">Indicadores para acompanhar</div>
+        <div id="pv-indicadores" style="background:#fff;border:1px solid var(--roxo-cl);border-radius:10px;padding:16px"></div>
+      </div>
     </div>
   </div>
 
 </div><!-- fim pv-dash -->
 
-</div><!-- fim page-producao -->
-<!-- ===================== ABA 4 · INVENTÁRIO ===================== -->
+</div><!-- ===================== ABA 4 · INVENTÁRIO ===================== -->
 <div class="page" id="page-inventario">
   <div class="page-title">Consolidar Inventário</div>
   <div class="page-sub">Anexe o arquivo de contagem (padrão "exemplo_contagem") para gerar o relatório final.</div>
@@ -741,9 +1020,6 @@ dz.addEventListener('drop', e=>{
 <!-- ABA 4 LOGIC -->
 <script>
 // ===================== ABA 4 · CONSOLIDAR INVENTÁRIO =====================
-// Mapa de nomes do cadastro oficial (normChave → nome original com acentos)
-const CADASTRO_NOMES = {"BLUSA FLORA": "BLUSA FLORA", "JAQUETA STELLA": "JAQUETA  STELLA", "REGATA HOT - INATIVO": "REGATA HOT - INATIVO", "ADESIVO - PNG": "ADESIVO - PNG", "BIQUINI CORTININHA - PNG": "BIQUINI CORTININHA - PNG", "BIQUINI MARQUINHA - PNG": "BIQUINI MARQUINHA - PNG", "BIQUINI KIARA": "BIQUÍNI KIARA", "BIQUINI NINA": "BIQUÍNI NINA", "BLACK CARD - PNG": "BLACK CARD - PNG", "BLOQUINHO - PNG": "BLOQUINHO - PNG", "BLUSA HELENA": "BLUSA  HELENA", "BLUSA NORA": "BLUSA  NORA", "BLUSA ANDY": "BLUSA ANDY", "BLUSA AYLA": "BLUSA AYLA", "BLUSA CAMISA BABADOS TESTE": "BLUSA CAMISA BABADOS TESTE", "BLUSA CAROLINA": "BLUSA CAROLINA", "BLUSA CORA": "BLUSA CORA", "BLUSA CORSET TESTE": "BLUSA CORSET TESTE", "BLUSA DALILA": "BLUSA DALILA", "BLUSA DANY": "BLUSA DANY", "BLUSA ELOISE": "BLUSA ELOISE", "BLUSA EVA": "BLUSA EVA", "BLUSA HANNA": "BLUSA HANNA", "BLUSA ISY": "BLUSA ISY", "BLUSA JADE": "BLUSA JADE", "BLUSA LEXIE": "BLUSA LEXIE", "BLUSA LOLA": "BLUSA LOLA", "BLUSA MIMI": "BLUSA MIMI", "BLUSA SASHA": "BLUSA SASHA", "BLUSA VIOLA": "BLUSA VIOLA", "BLUSA ZOE": "BLUSA ZOE", "BODY AMANDA": "BODY AMANDA", "BODY AURA": "BODY AURA", "BODY BERLIM - INATIVO": "BODY BERLIM - INATIVO", "BODY CHARLY": "BODY CHARLY", "BODY CLEO": "BODY CLEO", "BODY JENNY - INATIVO": "BODY JENNY - INATIVO", "BODY MAITE": "BODY MAITÊ", "BODY MARGOT - INATIVO": "BODY MARGOT - INATIVO", "BODY MATILDA": "BODY MATILDA", "BODY OLIVIA": "BODY OLIVIA", "BODY PENELOPE": "BODY PENÉLOPE", "BODY SAKURA": "BODY SAKURA", "BODY SHARPAY - INATIVO": "BODY SHARPAY - INATIVO", "BODY SURPRESA - PNG": "BODY SURPRESA - PNG", "BODY TEREZA": "BODY TEREZA", "BODY VITORIA - INATIVO": "BODY VITORIA - INATIVO", "BRINDE REGATA BRA - PNG": "BRINDE REGATA BRA - PNG", "CALCA AMARRACAO TESTE": "CALÇA AMARRAÇÃO TESTE", "CALCA ANGELINA - INATIVO": "CALÇA ANGELINA - INATIVO", "CALCA ANITTA": "CALÇA ANITTA", "CALCA BARBARA - INATIVO": "CALÇA BÁRBARA - INATIVO", "CALCA CHER - INATIVO": "CALÇA CHER - INATIVO", "CALCA DUNA": "CALÇA DUNA", "CALCA ELINA - INATIVO": "CALÇA ELINA - INATIVO", "CALCA HOLLY - INATIVO": "CALÇA HOLLY - INATIVO", "CALCA JULLY": "CALÇA JULLY", "CALCA MIRANDA": "CALÇA MIRANDA", "CALCA NIKKI": "CALÇA NIKKI", "CALCA ORNELLA - INATIVO": "CALÇA ORNELLA - INATIVO", "CALCA SELENA": "CALÇA SELENA", "CALCA STELLA - INATIVO": "CALÇA STELLA - INATIVO", "CALCA TEDDY": "CALÇA TEDDY", "CALCA TORONTO - INATIVO": "CALÇA TORONTO - INATIVO", "CALCA TRICOT ANAHI": "CALÇA TRICOT ANAHÍ", "CALCA VENUS": "CALÇA VÊNUS", "CAMISA MALIBU - INATIVO": "CAMISA MALIBU - INATIVO", "CAMISA ORNELLA - INATIVO": "CAMISA ORNELLA - INATIVO", "CASACO JESSI": "CASACO JESSI", "CASACO NAOMI": "CASACO NAOMI", "CASACO SIENA": "CASACO SIENA", "CHAVEIRO - PNG": "CHAVEIRO - PNG", "COPO STAR - PNG": "COPO STAR - PNG", "ECOBAG - PNG": "ECOBAG - PNG", "EXCLUIR PRODUTO": "EXCLUIR PRODUTO", "INFLU CARD - PNG": "INFLU CARD - PNG", "JAQUETA BRA": "JAQUETA BRA", "JAQUETA MIRANDA - INATIVO": "JAQUETA MIRANDA - INATIVO", "LOOK SURPRESA - PNG": "LOOK SURPRESA - PNG", "MACACAO DESIRE - INATIVO": "MACACÃO DESIRÉ - INATIVO", "MACAQUITO SOLE - INATIVO": "MACAQUITO SOLÉ - INATIVO", "OCULOS - PNG": "OCULOS - PNG", "REGATA ANTONELLA": "REGATA ANTONELLA", "REGATA BR": "REGATA BR", "REGATA BRA": "REGATA BRA", "REGATA BRA ADIDAS - TESTE": "REGATA BRA ADIDAS - TESTE", "REGATA BRA RECORTE - TESTE": "REGATA BRA RECORTE - TESTE", "REGATA DUO": "REGATA DUO", "REGATA JUSTA TESTE": "REGATA JUSTA TESTE", "REGATA LUNA": "REGATA LUNA", "REGATA ZODIACO": "REGATA ZODÍACO", "SAIA ALEX": "SAIA ALEX", "SAIA ARIEL - INATIVO": "SAIA ARIEL - INATIVO", "SAIA BABADOS MARI": "SAIA BABADOS MARI", "SAIA CAPRI": "SAIA CAPRI", "SAIA ILHOS TESTE": "SAIA ILHÓS TESTE", "SAIA LIA": "SAIA LIA", "SAIA MADSON - INATIVO": "SAIA MADSON - INATIVO", "SAIA MILA": "SAIA MILA", "SAIA MILLI - INATIVO": "SAIA MILLI - INATIVO", "SAIA OLIMPIA": "SAIA OLÍMPIA", "SAIA SOFIA": "SAIA SOFIA", "SAIA TULUM TESTE": "SAIA TULUM TESTE", "SHORT ALFAIATARIA TESTE": "SHORT ALFAIATARIA TESTE", "SHORT FITNESS - TESTE": "SHORT FITNESS - TESTE", "SHORT FITNESS RVB - TESTE": "SHORT FITNESS RVB - TESTE", "SHORT GIULIA - INATIVO": "SHORT GIULIA - INATIVO", "SHORT SAVANA - INATIVO": "SHORT SAVANA - INATIVO", "TOP ALEXA - INATIVO": "TOP ALEXA - INATIVO", "TOP ALISON": "TOP ALISON", "TOP ALISSA": "TOP ALISSA", "TOP AMY": "TOP AMY", "TOP AMELIA - INATIVO": "TOP AMÉLIA - INATIVO", "TOP ANNA": "TOP ANNA", "TOP ARES": "TOP ARES", "TOP ARIEL - INATIVO": "TOP ARIEL - INATIVO", "TOP ASHLEY - INATIVO": "TOP ASHLEY - INATIVO", "TOP AURORA - INATIVO": "TOP AURORA - INATIVO", "TOP BA - INATIVO": "TOP BA - INATIVO", "TOP BARBARA - INATIVO": "TOP BARBARA - INATIVO", "TOP BELLY - INATIVO": "TOP BELLY - INATIVO", "TOP BILLIE - INATIVO": "TOP BILLIE - INATIVO", "TOP BONNIE": "TOP BONNIE", "TOP BRASIL": "TOP BRASIL", "TOP BRIZA - INATIVO": "TOP BRIZA - INATIVO", "TOP CAMILA - INATIVO": "TOP CAMILA - INATIVO", "TOP CAPRI - INATIVO": "TOP CAPRI - INATIVO", "TOP CASACO KITTY - INATIVO": "TOP CASACO KITTY - INATIVO", "TOP CATARINA - INATIVO": "TOP CATARINA - INATIVO", "TOP CECI - INATIVO": "TOP CECI - INATIVO", "TOP CHIARA - INATIVO": "TOP CHIARA - INATIVO", "TOP CLOVER": "TOP CLOVER", "TOP CORAL - INATIVO": "TOP CORAL - INATIVO", "TOP DUA - INATIVO": "TOP DUA - INATIVO", "TOP DUNA - INATIVO": "TOP DUNA - INATIVO", "TOP FITNESS - TESTE": "TOP FITNESS - TESTE", "TOP FITNESS RVB - TESTE": "TOP FITNESS RVB - TESTE", "TOP GABRIELA": "TOP GABRIELA", "TOP GRECIA - INATIVO": "TOP GRÉCIA - INATIVO", "TOP HAILEY": "TOP HAILEY", "TOP IVY - INATIVO": "TOP IVY - INATIVO", "TOP KATY": "TOP KATY", "TOP LANA": "TOP LANA", "TOP LARA - INATIVO": "TOP LARA - INATIVO", "TOP LILLY - INATIVO": "TOP LILLY - INATIVO", "TOP LUISA - INATIVO": "TOP LUISA - INATIVO", "TOP MADDY - INATIVO": "TOP MADDY - INATIVO", "TOP MADONNA - INATIVO": "TOP MADONNA - INATIVO", "TOP MAIA - INATIVO": "TOP MAIA - INATIVO", "TOP MANDI": "TOP MANDI", "TOP MARINA - INATIVO": "TOP MARINA - INATIVO", "TOP MIA": "TOP MIA", "TOP MILEY - INATIVO": "TOP MILEY - INATIVO", "TOP MILLI - INATIVO": "TOP MILLI - INATIVO", "TOP NALU - INATIVO": "TOP NALU - INATIVO", "TOP NATASHA - INATIVO": "TOP NATASHA - INATIVO", "TOP OFELIA": "TOP OFÉLIA", "TOP OLGA": "TOP OLGA", "TOP PIETRA": "TOP PIETRA", "TOP REGINA - INATIVO": "TOP REGINA - INATIVO", "TOP SABRINA": "TOP SABRINA", "TOP SASHA - INATIVO": "TOP SASHA - INATIVO", "TOP SAVANA - INATIVO": "TOP SAVANA - INATIVO", "TOP SCARLLET - INATIVO": "TOP SCARLLET - INATIVO", "TOP SIDNEY - INATIVO": "TOP SIDNEY - INATIVO", "TOP SKIN": "TOP SKIN", "TOP SURPRESA - PNG": "TOP SURPRESA - PNG", "TOP TAKADA - INATIVO": "TOP TAKADA - INATIVO", "TOP TAYLOR": "TOP TAYLOR", "TOP TRICOT ESTRELA": "TOP TRICOT ESTRELA", "TOP TRICOT LUCY": "TOP TRICOT LUCY", "TOP TULUM - INATIVO": "TOP TULUM - INATIVO", "TOP VIOLA - INATIVO": "TOP VIOLA - INATIVO", "TOP YAS": "TOP YAS", "TOP YASMIN - INATIVO": "TOP YASMIN - INATIVO", "TOP YUMI - INATIVO": "TOP YUMI - INATIVO", "TOP ZINN - INATIVO": "TOP ZINN - INATIVO", "VESTIDO ALBA": "VESTIDO ALBA", "VESTIDO ALICIA": "VESTIDO ALICIA", "VESTIDO ANANDA - INATIVO": "VESTIDO ANANDA - INATIVO", "VESTIDO ANY": "VESTIDO ANY", "VESTIDO ANY BABADOS TESTE": "VESTIDO ANY BABADOS TESTE", "VESTIDO ARIANA - INATIVO": "VESTIDO ARIANA - INATIVO", "VESTIDO BELLA": "VESTIDO BELLA", "VESTIDO BUZIOS - INATIVO": "VESTIDO BÚZIOS - INATIVO", "VESTIDO CELINA - INATIVO": "VESTIDO CELINA - INATIVO", "VESTIDO CLARICE- INATIVO": "VESTIDO CLARICE- INATIVO", "VESTIDO DONATA - INATIVO": "VESTIDO DONATA - INATIVO", "VESTIDO EMMA - INATIVO": "VESTIDO EMMA - INATIVO", "VESTIDO JASMINE - INATIVO": "VESTIDO JASMINE - INATIVO", "VESTIDO JULIETTA": "VESTIDO JULIETTA", "VESTIDO LADY - INATIVO": "VESTIDO LADY - INATIVO", "VESTIDO LIS": "VESTIDO LIS", "VESTIDO LUA": "VESTIDO LUA", "VESTIDO LULU - INATIVO": "VESTIDO LULU - INATIVO", "VESTIDO LUNA - INATIVO": "VESTIDO LUNA - INATIVO", "VESTIDO PEROLA": "VESTIDO PÉROLA", "VESTIDO SERENA - INATIVO": "VESTIDO SERENA - INATIVO", "VESTIDO ISIS - INATIVO": "VESTIDO ÍSIS - INATIVO", "TRICOT PRESENTE - PNG": "TRICOT PRESENTE - PNG", "VESTIDO DONNATELA": "VESTIDO DONNATELA", "BIQUINI CLARA": "BIQUÍNI CLARA", "BIQUINI IRIS": "BIQUÍNI IRIS", "GARRAFINHA - PNG": "GARRAFINHA - PNG", "KIT PUMP - PNG": "KIT PUMP - PNG", "MACACAO DESIRE": "MACACÃO DESIRÉ", "MACACAO AXIS": "MACACÃO ÁXIS"};
-
 // Planilha "BASE DE DADOS- PRODUTOS LINX" — carrega sozinha ao abrir o arquivo,
 // sem precisar colar link nem clicar em nada. Pra trocar de planilha no futuro,
 // troque só o ID abaixo (a parte entre /d/ e /edit na URL do Google Sheets).
@@ -1045,9 +1321,7 @@ function processarVendasParaRuptura(text){
     const saldo = contado - d.qtd;
     const obs = contado===0 ? 'NÃO CONTADO' : '';
     const status = saldo < 0 ? 'RUPTURA' : 'OK';
-    // resolver nome pelo cadastro oficial (com acentos e cedilha corretos)
-    const _nomeCad = CADASTRO_NOMES[d.produto] || d.produto;
-    return {produto:_nomeCad, cor:d.cor, tamanho:d.tamanho, contado, demanda:d.qtd, saldo, status, obs};
+    return {produto:d.produto, cor:d.cor, tamanho:d.tamanho, contado, demanda:d.qtd, saldo, status, obs};
   }).sort((a,b)=> a.saldo - b.saldo);
 
   // itens que não deram match entre as duas bases (pra auditoria/visibilidade)
@@ -1325,14 +1599,35 @@ function descBucket(b, metricaLabel){
 }
 
 // Badges compactos "ícone % (contagem)" pra distribuição de pendentes por mês
-function renderDistribuicaoPendentes(pendBuckets, totalPendentes, buckets){
+function renderDistribuicaoPendentes(pendBuckets, totalPendentes, buckets, key, mesKey){
   if (!totalPendentes) return '<span style="color:var(--txt-s)">—</span>';
   return buckets.map(b=>{
     const n = pendBuckets[b.label]||0;
     if (!n) return '';
     const pct = (n/totalPendentes*100).toFixed(0);
-    return `<span title="${b.label}" style="display:inline-block;margin-right:8px;white-space:nowrap"><span>${b.icone}</span> <b style="color:${b.cor}">${pct}%</b> <span style="color:var(--txt-s)">(${n.toLocaleString('pt-BR')})</span></span>`;
+    const clickable = key && mesKey;
+    const estilo = `display:inline-block;margin-right:8px;white-space:nowrap${clickable?';cursor:pointer;border-bottom:1px dashed '+b.cor:''}`;
+    const onclick = clickable ? `onclick="abrirDetalheMensal('${key}','${mesKey}','${b.label}',${n})"` : '';
+    const title = clickable ? `title="Clique para ver os ${n} pedidos — ${b.label}"` : `title="${b.label}"`;
+    return `<span ${title} ${onclick} style="${estilo}"><span>${b.icone}</span> <b style="color:${b.cor}">${pct}%</b> <span style="color:var(--txt-s)">(${n.toLocaleString('pt-BR')})</span></span>`;
   }).join('') || '<span style="color:var(--txt-s)">—</span>';
+}
+
+function abrirDetalheMensal(key, mesKey, bucketLabel, n){
+  const fonte = key==='BOXLINK' ? window.DETALHE_BOXLINK : window.DETALHE_MARKET;
+  // Filtrar por mês E por bucket
+  const lista = fonte.filter(d=>{
+    const mesD = d.dataVenda ? d.dataVenda.toISOString().slice(0,7) : null;
+    return mesD === mesKey && d.bucketLabel === bucketLabel;
+  });
+  const nomeMes = mesKey; // ex: 2026-07
+  const titulo = `${bucketLabel} — ${nomeMes} — ${lista.length.toLocaleString('pt-BR')} pedido(s)`;
+  const sla = key==='BOXLINK' ? 7 : 2;
+  // Adicionar botão de exportar no modal
+  window._MODAL_EXPORT_KEY = key;
+  window._MODAL_EXPORT_MES = mesKey;
+  window._MODAL_EXPORT_BUCKET = bucketLabel;
+  abrirDetalhe(lista, titulo, sla);
 }
 
 // Compara o mês mais antigo com o mês mais recente já "maduro" (com mais embalado
@@ -1449,25 +1744,104 @@ function fecharDetalhe(){
 function exportarDetalheModal(){
   if (!MODAL_DETALHE_ATUAL.length){ alert('Nada para exportar.'); return; }
   const ehSimulacao = 'status' in MODAL_DETALHE_ATUAL[0] && !('bucketLabel' in MODAL_DETALHE_ATUAL[0]);
-  const ws = ehSimulacao
+  const wb = XLSX.utils.book_new();
+
+  // ── ABA 1: RESUMIDO (igual à tabela do modal) ──
+  const wsResumo = ehSimulacao
     ? XLSX.utils.json_to_sheet(MODAL_DETALHE_ATUAL.map(d=>({
-        'Pedido': d.pedido, 'Data da venda': d.data ? d.data.toLocaleDateString('pt-BR') : '', 'Status': d.status
+        'Pedido': d.pedido,
+        'Data da venda': d.data ? d.data.toLocaleDateString('pt-BR') : '',
+        'Status': d.status
       })))
     : XLSX.utils.json_to_sheet(MODAL_DETALHE_ATUAL.map(d=>({
-        'Pedido': d.pedido, 'Plataforma': d.plataforma,
+        'Pedido': d.pedido,
+        'Plataforma': d.plataforma,
         'Data da venda': d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '',
         'Data de embalagem': d.dataEmbalagem ? d.dataEmbalagem.toLocaleString('pt-BR') : '',
-        'Dias úteis': d.dias, 'Bucket': d.bucketLabel
+        'Dias úteis': d.dias !== null && d.dias !== undefined ? d.dias : '—',
+        'Atraso vs. SLA': d.dias !== null && d.dias !== undefined
+          ? (d.dias - (d.sla||7) > 0 ? `+${d.dias-(d.sla||7)}d` : `${d.dias-(d.sla||7)}d`)
+          : '—',
+        'Nível': d.bucketLabel || ''
       })));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Detalhe');
-  XLSX.writeFile(wb, 'detalhe_pedidos.xlsx');
+  XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumido');
+
+  // ── ABA 2: DETALHADO (itens do PV03 já carregado) ──
+  if (!ehSimulacao) {
+    // Usar ITENS_POR_PEDIDO_PV03 coletado durante o parse do PV03
+    const itensPorPedido = window.ITENS_POR_PEDIDO_PV03 || {};
+
+    const rowsDetalhe = [];
+    MODAL_DETALHE_ATUAL.forEach(d => {
+      const numStr = String(d.pedido).replace('NVS-','');
+      const itens = itensPorPedido[d.pedido] || itensPorPedido[numStr] || [];
+      if (itens.length === 0) {
+        rowsDetalhe.push({
+          'Pedido': d.pedido,
+          'Data da venda': d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '',
+          'Plataforma': d.plataforma,
+          'Dias úteis': d.dias !== null ? d.dias : '—',
+          'Produto': '—', 'Cor': '—', 'Tam': '—', 'Qtde': '—'
+        });
+      } else {
+        itens.forEach((item, idx) => {
+          rowsDetalhe.push({
+            'Pedido': d.pedido,
+            'Data da venda': d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '',
+            'Plataforma': d.plataforma,
+            'Dias úteis': d.dias !== null ? d.dias : '—',
+            'Produto': expNormProduto(item.produto),
+            'Cor': item.cor,
+            'Tam': item.tam,
+            'Qtde': item.qtde
+          });
+        });
+      }
+    });
+
+    const wsDetalhe = XLSX.utils.json_to_sheet(rowsDetalhe);
+    // Larguras de coluna
+    wsDetalhe['!cols'] = [{wch:16},{wch:14},{wch:10},{wch:12},{wch:30},{wch:16},{wch:8},{wch:6}];
+    XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhado');
+  }
+
+  const titulo = document.getElementById('modal-titulo').textContent
+    .replace(/[^a-zA-Z0-9_\-\s]/g,'').trim().slice(0,30) || 'detalhe_pedidos';
+  XLSX.writeFile(wb, titulo + '.xlsx');
 }
 
 // ---------------- BOXLINK ----------------
 // Leitor genérico de PV03 (reutilizado pela aba de Prazo e pela aba de Calças).
 // Detecta se é um xlsx/xls binário real (zip) ou o XML SpreadsheetML leve que o
 // sistema costuma exportar como .xls, e usa o parser adequado em cada caso.
+function coletarItensPV03(text) {
+  // Parser das 14 colunas do PV03 para coletar produto/cor/tam/qtde por pedido
+  // Posições: 0=Status 1=Data 2=Pedidovenda 3=DataConf 4=Prefat 5=PrefatExcl
+  //           6=Cliente 7=UF 8=Descrição 9=Tam 10=Cor 11=EAN 12=Barr 13=Qtde
+  const cellRe = /<Cell[^>]*>(?:<Data[^>]*>([\s\S]*?)<\/Data>)?<\/Cell>/g;
+  const rows = text.split('</Row>');
+  window.ITENS_POR_PEDIDO_PV03 = {};
+  let first = true;
+  for (const row of rows) {
+    if (row.indexOf('<Row>') === -1 && row.indexOf('<Row ') === -1) continue;
+    const vals = []; let cm; cellRe.lastIndex = 0;
+    while ((cm = cellRe.exec(row)) !== null) vals.push(decodeXmlEnt(cm[1]) || '');
+    if (vals.length < 4) continue;
+    if (first) { first = false; continue; }
+    if ((vals[5] || '').trim() === '1') continue; // prefat cancelado
+    const pedido = vals[2];
+    if (!pedido) continue;
+    const descRaw = vals[8] || '';
+    const produto = descRaw.replace(/^[A-Z0-9]+-\s*/, '').trim();
+    if (!produto) continue;
+    const cor  = (vals[10] || '').toUpperCase().trim();
+    const tam  = (vals[9]  || '').toUpperCase().trim();
+    const qtde = parseFloat(vals[13]) || 1;
+    if (!window.ITENS_POR_PEDIDO_PV03[pedido]) window.ITENS_POR_PEDIDO_PV03[pedido] = [];
+    window.ITENS_POR_PEDIDO_PV03[pedido].push({ produto, cor, tam, qtde });
+  }
+}
+
 function lerArquivoPV03(file, nomeEl, callback){
   nomeEl.innerHTML = `⏳ Lendo ${file.name} (${(file.size/1024/1024).toFixed(0)}MB)... isso pode levar alguns segundos.`;
   const reader = new FileReader();
@@ -1487,6 +1861,8 @@ function lerArquivoPV03(file, nomeEl, callback){
         } else {
           const text = new TextDecoder('utf-8').decode(buf);
           const rows = parseSpreadsheetMLLeve(text);
+          // Coletar itens por pedido (14 colunas) para exportação detalhada
+          coletarItensPV03(text);
           const seg = ((performance.now()-t0)/1000).toFixed(1);
           nomeEl.textContent = `✓ ${file.name} (${rows.length.toLocaleString('pt-BR')} linhas, ${seg}s)`;
           callback(rows);
@@ -1543,7 +1919,8 @@ function processarBoxlink(rows){
   }
 
   // 1 linha por pedido: primeira ocorrência de Status/Data/Data conferido
-  const porPedido = {};
+  window.PV03_POR_PEDIDO = {};
+  const porPedido = window.PV03_POR_PEDIDO;
   let hojeRelatorio = null;
   rows.forEach(r=>{
     const ped = r['Pedidovenda'];
@@ -1561,7 +1938,7 @@ function processarBoxlink(rows){
   });
 
   const pedidos = Object.entries(porPedido)
-    .filter(([ped,info])=> info.status !== 'PEDIDO CANCELADO' && !ped.startsWith('REV-'));
+    .filter(([ped,info])=> info.status !== 'PEDIDO CANCELADO' && info.status !== '* PEDIDO SUSPENSO *' && !ped.startsWith('REV-'));
 
   const contagens = {};
   let embalados = 0;
@@ -1610,6 +1987,13 @@ function processarBoxlink(rows){
 
   window.DETALHE_BOXLINK = detalhe;
   renderBoxlink(pedidos.length, embalados, contagens, mensal, semDataVenda, hojeRelatorio);
+  // Sinalizar que PV03 está pronto para análise Express
+  const expStatusPV = document.getElementById('exp-status-pv03');
+  if (expStatusPV) {
+    expStatusPV.textContent = '✅ PV03 carregado';
+    expStatusPV.style.color = 'var(--ok)';
+  }
+  if (typeof expVerificarProntoParaAnalisar === 'function') expVerificarProntoParaAnalisar();
 }
 
 function renderBoxlink(total, embalados, contagens, mensal, semDataVenda, hojeRelatorio){
@@ -1644,7 +2028,12 @@ function renderBoxlink(total, embalados, contagens, mensal, semDataVenda, hojeRe
   html += '<div class="sec">Classificação por Prazo (Dias Úteis)</div>';
   html += renderBlocos(BUCKETS_BOXLINK, contagens, embalados, 'até a embalagem (Data conferido no PV03)', 'BOXLINK', 7);
 
-  html += '<div class="sec">Performance Mensal</div>';
+  html += '<div class="sec" style="display:flex;align-items:center;justify-content:space-between">' +
+    '<span>Performance Mensal</span>' +
+    '<span style="display:flex;gap:8px">' +
+      '<button class="btn btn-secondary" onclick="exportarPendentesMensal(\'BOXLINK\')" style="font-size:11px;padding:5px 12px">⬇ Exportar pendentes</button>' +
+    '</span>' +
+  '</div>';
   html += `<div class="ins b" style="margin-bottom:10px"><b>ⓘ</b> "Pendentes" = vendido nesse mês e ainda sem embalagem até agora. A distribuição usa a mesma régua de prazo (D+7, D+8-14...), mas contando dias úteis decorridos desde a venda até <b>${hojeRelatorio ? hojeRelatorio.toLocaleDateString('pt-BR') : 'hoje'}</b> (data mais recente encontrada no relatório) — não até a embalagem, porque ela ainda não aconteceu. Meses marcados "histórico" são congelados (sistema TINY, antes da virada pro LINX em 15/05/2026) e não têm coluna de Pendentes (não existe mais essa informação viva pra eles).</div>`;
   html += '<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Embalados</th><th>Dentro D+7</th><th>Fora</th><th>% no Prazo</th><th>Média d.úteis</th><th>Pendentes</th><th>Distribuição dos Pendentes</th></tr></thead><tbody>';
   HISTORICO_BOXLINK.forEach(h=>{
@@ -1656,7 +2045,7 @@ function renderBoxlink(total, embalados, contagens, mensal, semDataVenda, hojeRe
     const pct = m.embalados ? (m.noPrazo/m.embalados*100) : 0;
     const media = m.embalados ? (m.somaDias/m.embalados) : 0;
     const badge = pct>=70?'bg':pct>=40?'bo':'br';
-    const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_BOXLINK);
+    const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_BOXLINK, 'BOXLINK', mes);
     html += `<tr><td><b>${nomeMesPt(mes)}</b> <span style="font-size:9px;background:var(--roxo-cl);color:var(--roxo);padding:1px 6px;border-radius:6px">LINX</span></td><td>${m.embalados}</td><td>${m.noPrazo}</td><td>${m.fora}</td><td><span class="badge ${badge}">${pct.toFixed(1)}%</span></td><td>${media.toFixed(1)}d</td><td><b>${m.pendentes.toLocaleString('pt-BR')}</b></td><td>${distPendentes}</td></tr>`;
   });
   html += '</tbody></table></div>';
@@ -1831,7 +2220,7 @@ function renderMarketplace(total, embalados, contagens, mensal, porPlataforma, h
     const pct = m.embalados ? (m.noPrazo/m.embalados*100) : 0;
     const media = m.embalados ? (m.somaDias/m.embalados) : 0;
     const badge = pct>=70?'bg':pct>=40?'bo':'br';
-    const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_MARKET);
+    const distPendentes = renderDistribuicaoPendentes(m.pendBuckets, m.pendentes, BUCKETS_MARKET, 'MARKET', mes);
     html += `<tr><td><b>${mes}</b></td><td>${m.embalados}</td><td>${m.noPrazo}</td><td>${m.fora}</td><td><span class="badge ${badge}">${pct.toFixed(1)}%</span></td><td>${media.toFixed(1)}d</td><td><b>${m.pendentes.toLocaleString('pt-BR')}</b></td><td>${distPendentes}</td></tr>`;
   });
   html += '</tbody></table></div>';
@@ -1849,6 +2238,578 @@ function renderMarketplace(total, embalados, contagens, mensal, porPlataforma, h
     if (file){ document.getElementById(inputId).files = e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
   });
 });
+
+
+// ══════════════════════════════════════
+// ANÁLISE PEDIDOS EXPRESS
+// ══════════════════════════════════════
+const EXP_CADASTRO_NOMES = {"BLUSA FLORA": "BLUSA FLORA", "JAQUETA STELLA": "JAQUETA  STELLA", "REGATA HOT - INATIVO": "REGATA HOT", "ADESIVO - PNG": "ADESIVO - PNG", "BIQUINI CORTININHA - PNG": "BIQUINI CORTININHA - PNG", "BIQUINI MARQUINHA - PNG": "BIQUINI MARQUINHA - PNG", "BIQUINI KIARA": "BIQUÍNI KIARA", "BIQUINI NINA": "BIQUÍNI NINA", "BLACK CARD - PNG": "BLACK CARD - PNG", "BLOQUINHO - PNG": "BLOQUINHO - PNG", "BLUSA HELENA": "BLUSA  HELENA", "BLUSA NORA": "BLUSA  NORA", "BLUSA ANDY": "BLUSA ANDY", "BLUSA AYLA": "BLUSA AYLA", "BLUSA CAMISA BABADOS TESTE": "BLUSA CAMISA BABADOS TESTE", "BLUSA CAROLINA": "BLUSA CAROLINA", "BLUSA CORA": "BLUSA CORA", "BLUSA CORSET TESTE": "BLUSA CORSET TESTE", "BLUSA DALILA": "BLUSA DALILA", "BLUSA DANY": "BLUSA DANY", "BLUSA ELOISE": "BLUSA ELOISE", "BLUSA EVA": "BLUSA EVA", "BLUSA HANNA": "BLUSA HANNA", "BLUSA ISY": "BLUSA ISY", "BLUSA JADE": "BLUSA JADE", "BLUSA LEXIE": "BLUSA LEXIE", "BLUSA LOLA": "BLUSA LOLA", "BLUSA MIMI": "BLUSA MIMI", "BLUSA SASHA": "BLUSA SASHA", "BLUSA VIOLA": "BLUSA VIOLA", "BLUSA ZOE": "BLUSA ZOE", "BODY AMANDA": "BODY AMANDA", "BODY AURA": "BODY AURA", "BODY BERLIM - INATIVO": "BODY BERLIM", "BODY CHARLY": "BODY CHARLY", "BODY CLEO": "BODY CLEO", "BODY JENNY - INATIVO": "BODY JENNY", "BODY MAITE": "BODY MAITÊ", "BODY MARGOT - INATIVO": "BODY MARGOT", "BODY MATILDA": "BODY MATILDA", "BODY OLIVIA": "BODY OLIVIA", "BODY PENELOPE": "BODY PENÉLOPE", "BODY SAKURA": "BODY SAKURA", "BODY SHARPAY - INATIVO": "BODY SHARPAY", "BODY SURPRESA - PNG": "BODY SURPRESA - PNG", "BODY TEREZA": "BODY TEREZA", "BODY VITORIA - INATIVO": "BODY VITORIA", "BRINDE REGATA BRA - PNG": "BRINDE REGATA BRA - PNG", "CALCA AMARRACAO TESTE": "CALÇA AMARRAÇÃO TESTE", "CALCA ANGELINA - INATIVO": "CALÇA ANGELINA", "CALCA ANITTA": "CALÇA ANITTA", "CALCA BARBARA - INATIVO": "CALÇA BÁRBARA", "CALCA CHER - INATIVO": "CALÇA CHER", "CALCA DUNA": "CALÇA DUNA", "CALCA ELINA - INATIVO": "CALÇA ELINA", "CALCA HOLLY - INATIVO": "CALÇA HOLLY", "CALCA JULLY": "CALÇA JULLY", "CALCA MIRANDA": "CALÇA MIRANDA", "CALCA NIKKI": "CALÇA NIKKI", "CALCA ORNELLA - INATIVO": "CALÇA ORNELLA", "CALCA SELENA": "CALÇA SELENA", "CALCA STELLA - INATIVO": "CALÇA STELLA", "CALCA TEDDY": "CALÇA TEDDY", "CALCA TORONTO - INATIVO": "CALÇA TORONTO", "CALCA TRICOT ANAHI": "CALÇA TRICOT ANAHÍ", "CALCA VENUS": "CALÇA VÊNUS", "CAMISA MALIBU - INATIVO": "CAMISA MALIBU", "CAMISA ORNELLA - INATIVO": "CAMISA ORNELLA", "CASACO JESSI": "CASACO JESSI", "CASACO NAOMI": "CASACO NAOMI", "CASACO SIENA": "CASACO SIENA", "CHAVEIRO - PNG": "CHAVEIRO - PNG", "COPO STAR - PNG": "COPO STAR - PNG", "ECOBAG - PNG": "ECOBAG - PNG", "EXCLUIR PRODUTO": "EXCLUIR PRODUTO", "INFLU CARD - PNG": "INFLU CARD - PNG", "JAQUETA BRA": "JAQUETA BRA", "JAQUETA MIRANDA - INATIVO": "JAQUETA MIRANDA", "LOOK SURPRESA - PNG": "LOOK SURPRESA - PNG", "MACACAO DESIRE - INATIVO": "MACACÃO DESIRÉ", "MACAQUITO SOLE - INATIVO": "MACAQUITO SOLÉ", "OCULOS - PNG": "OCULOS - PNG", "REGATA ANTONELLA": "REGATA ANTONELLA", "REGATA BR": "REGATA BR", "REGATA BRA": "REGATA BRA", "REGATA BRA ADIDAS - TESTE": "REGATA BRA ADIDAS - TESTE", "REGATA BRA RECORTE - TESTE": "REGATA BRA RECORTE - TESTE", "REGATA DUO": "REGATA DUO", "REGATA JUSTA TESTE": "REGATA JUSTA TESTE", "REGATA LUNA": "REGATA LUNA", "REGATA ZODIACO": "REGATA ZODÍACO", "SAIA ALEX": "SAIA ALEX", "SAIA ARIEL - INATIVO": "SAIA ARIEL", "SAIA BABADOS MARI": "SAIA BABADOS MARI", "SAIA CAPRI": "SAIA CAPRI", "SAIA ILHOS TESTE": "SAIA ILHÓS TESTE", "SAIA LIA": "SAIA LIA", "SAIA MADSON - INATIVO": "SAIA MADSON", "SAIA MILA": "SAIA MILA", "SAIA MILLI - INATIVO": "SAIA MILLI", "SAIA OLIMPIA": "SAIA OLÍMPIA", "SAIA SOFIA": "SAIA SOFIA", "SAIA TULUM TESTE": "SAIA TULUM TESTE", "SHORT ALFAIATARIA TESTE": "SHORT ALFAIATARIA TESTE", "SHORT FITNESS - TESTE": "SHORT FITNESS - TESTE", "SHORT FITNESS RVB - TESTE": "SHORT FITNESS RVB - TESTE", "SHORT GIULIA - INATIVO": "SHORT GIULIA", "SHORT SAVANA - INATIVO": "SHORT SAVANA", "TOP ALEXA - INATIVO": "TOP ALEXA", "TOP ALISON": "TOP ALISON", "TOP ALISSA": "TOP ALISSA", "TOP AMY": "TOP AMY", "TOP AMELIA - INATIVO": "TOP AMÉLIA", "TOP ANNA": "TOP ANNA", "TOP ARES": "TOP ARES", "TOP ARIEL - INATIVO": "TOP ARIEL", "TOP ASHLEY - INATIVO": "TOP ASHLEY", "TOP AURORA - INATIVO": "TOP AURORA", "TOP BA - INATIVO": "TOP BA", "TOP BARBARA - INATIVO": "TOP BARBARA", "TOP BELLY - INATIVO": "TOP BELLY", "TOP BILLIE - INATIVO": "TOP BILLIE", "TOP BONNIE": "TOP BONNIE", "TOP BRASIL": "TOP BRASIL", "TOP BRIZA - INATIVO": "TOP BRIZA", "TOP CAMILA - INATIVO": "TOP CAMILA", "TOP CAPRI - INATIVO": "TOP CAPRI", "TOP CASACO KITTY - INATIVO": "TOP CASACO KITTY", "TOP CATARINA - INATIVO": "TOP CATARINA", "TOP CECI - INATIVO": "TOP CECI", "TOP CHIARA - INATIVO": "TOP CHIARA", "TOP CLOVER": "TOP CLOVER", "TOP CORAL - INATIVO": "TOP CORAL", "TOP DUA - INATIVO": "TOP DUA", "TOP DUNA - INATIVO": "TOP DUNA", "TOP FITNESS - TESTE": "TOP FITNESS - TESTE", "TOP FITNESS RVB - TESTE": "TOP FITNESS RVB - TESTE", "TOP GABRIELA": "TOP GABRIELA", "TOP GRECIA - INATIVO": "TOP GRÉCIA", "TOP HAILEY": "TOP HAILEY", "TOP IVY - INATIVO": "TOP IVY", "TOP KATY": "TOP KATY", "TOP LANA": "TOP LANA", "TOP LARA - INATIVO": "TOP LARA", "TOP LILLY - INATIVO": "TOP LILLY", "TOP LUISA - INATIVO": "TOP LUISA", "TOP MADDY - INATIVO": "TOP MADDY", "TOP MADONNA - INATIVO": "TOP MADONNA", "TOP MAIA - INATIVO": "TOP MAIA", "TOP MANDI": "TOP MANDI", "TOP MARINA - INATIVO": "TOP MARINA", "TOP MIA": "TOP MIA", "TOP MILEY - INATIVO": "TOP MILEY", "TOP MILLI - INATIVO": "TOP MILLI", "TOP NALU - INATIVO": "TOP NALU", "TOP NATASHA - INATIVO": "TOP NATASHA", "TOP OFELIA": "TOP OFÉLIA", "TOP OLGA": "TOP OLGA", "TOP PIETRA": "TOP PIETRA", "TOP REGINA - INATIVO": "TOP REGINA", "TOP SABRINA": "TOP SABRINA", "TOP SASHA - INATIVO": "TOP SASHA", "TOP SAVANA - INATIVO": "TOP SAVANA", "TOP SCARLLET - INATIVO": "TOP SCARLLET", "TOP SIDNEY - INATIVO": "TOP SIDNEY", "TOP SKIN": "TOP SKIN", "TOP SURPRESA - PNG": "TOP SURPRESA - PNG", "TOP TAKADA - INATIVO": "TOP TAKADA", "TOP TAYLOR": "TOP TAYLOR", "TOP TRICOT ESTRELA": "TOP TRICOT ESTRELA", "TOP TRICOT LUCY": "TOP TRICOT LUCY", "TOP TULUM - INATIVO": "TOP TULUM", "TOP VIOLA - INATIVO": "TOP VIOLA", "TOP YAS": "TOP YAS", "TOP YASMIN - INATIVO": "TOP YASMIN", "TOP YUMI - INATIVO": "TOP YUMI", "TOP ZINN - INATIVO": "TOP ZINN", "VESTIDO ALBA": "VESTIDO ALBA", "VESTIDO ALICIA": "VESTIDO ALICIA", "VESTIDO ANANDA - INATIVO": "VESTIDO ANANDA", "VESTIDO ANY": "VESTIDO ANY", "VESTIDO ANY BABADOS TESTE": "VESTIDO ANY BABADOS TESTE", "VESTIDO ARIANA - INATIVO": "VESTIDO ARIANA", "VESTIDO BELLA": "VESTIDO BELLA", "VESTIDO BUZIOS - INATIVO": "VESTIDO BÚZIOS", "VESTIDO CELINA - INATIVO": "VESTIDO CELINA", "VESTIDO CLARICE- INATIVO": "VESTIDO CLARICE- INATIVO", "VESTIDO DONATA - INATIVO": "VESTIDO DONATA", "VESTIDO EMMA - INATIVO": "VESTIDO EMMA", "VESTIDO JASMINE - INATIVO": "VESTIDO JASMINE", "VESTIDO JULIETTA": "VESTIDO JULIETTA", "VESTIDO LADY - INATIVO": "VESTIDO LADY", "VESTIDO LIS": "VESTIDO LIS", "VESTIDO LUA": "VESTIDO LUA", "VESTIDO LULU - INATIVO": "VESTIDO LULU", "VESTIDO LUNA - INATIVO": "VESTIDO LUNA", "VESTIDO PEROLA": "VESTIDO PÉROLA", "VESTIDO SERENA - INATIVO": "VESTIDO SERENA", "VESTIDO ISIS - INATIVO": "VESTIDO ÍSIS", "TRICOT PRESENTE - PNG": "TRICOT PRESENTE - PNG", "VESTIDO DONNATELA": "VESTIDO DONNATELA", "BIQUINI CLARA": "BIQUÍNI CLARA", "BIQUINI IRIS": "BIQUÍNI IRIS", "GARRAFINHA - PNG": "GARRAFINHA - PNG", "KIT PUMP - PNG": "KIT PUMP - PNG", "MACACAO DESIRE": "MACACÃO DESIRÉ", "MACACAO AXIS": "MACACÃO ÁXIS"};
+let EXP_VENDAS = null;   // dados do CSV de vendas
+
+// Mapeamentos especiais: nome no PV03/Vendas → nome no cadastro
+const EXP_MAP_ESPECIAL = {
+  'TRICOT NAOMI': 'CASACO NAOMI',
+  'TRICOT JESSI': 'CASACO JESSI',
+  'SAIA MARI': 'SAIA BABADOS MARI',
+};
+
+function expNormProduto(nome) {
+  if (!nome) return nome;
+  const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().trim().replace(/\s+/g,' ');
+  const chave = norm(nome);
+  // 0. Mapeamento especial (exceções onde nome difere entre sistemas)
+  if (EXP_MAP_ESPECIAL[chave]) return EXP_MAP_ESPECIAL[chave];
+  // 1. Match exato
+  if (EXP_CADASTRO_NOMES[chave]) return EXP_CADASTRO_NOMES[chave];
+  // 2. Match por TIPO + palavra do nome (da última para a primeira)
+  // Cobre casos como "blusa em tule flora" → "BLUSA FLORA"
+  const palavras = chave.split(' ');
+  if (palavras.length >= 2) {
+    const tipo = palavras[0];
+    // Tentar tipo + cada palavra (da última para a primeira)
+    for (let i = palavras.length - 1; i > 0; i--) {
+      const tentativa = tipo + ' ' + palavras[i];
+      if (EXP_CADASTRO_NOMES[tentativa]) return EXP_CADASTRO_NOMES[tentativa];
+    }
+    // Tentar tipo + últimas 2 palavras
+    if (palavras.length >= 3) {
+      const tentativa2 = tipo + ' ' + palavras[palavras.length-2] + ' ' + palavras[palavras.length-1];
+      if (EXP_CADASTRO_NOMES[tentativa2]) return EXP_CADASTRO_NOMES[tentativa2];
+    }
+  }
+  return nome; // fallback: retorna original
+}
+let EXP_PV03   = null;   // mapa pedido→{status, dataConf} do PV03 já carregado
+let EXP_SELECIONADOS = new Set();
+let EXP_DADOS_PERIODOS = [];
+let EXP_PEDIDOS_DETALHE = [];
+let expChartPeriodos = null, expChartOfensores = null;
+
+// Upload CSV de Vendas Nuvemshop
+document.getElementById('nvs-vendas-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('nvs-vendas-filename').textContent = file.name;
+  Papa.parse(file, {
+    header: true, delimiter: ';', encoding: 'ISO-8859-1', skipEmptyLines: true,
+    complete: function(res) {
+      EXP_VENDAS = res.data;
+      document.getElementById('exp-status-csv').textContent = '✅ CSV de Vendas carregado';
+      document.getElementById('exp-status-csv').style.color = 'var(--ok)';
+      expVerificarProntoParaAnalisar();
+    }
+  });
+});
+
+function expVerificarProntoParaAnalisar() {
+  // DETALHE_BOXLINK é global e só existe após processarBoxlink terminar
+  const pv3ok = window.DETALHE_BOXLINK && window.DETALHE_BOXLINK.length > 0;
+  const csvok = EXP_VENDAS && EXP_VENDAS.length > 0;
+  const btn = document.getElementById('exp-btn-analisar');
+  if (pv3ok && csvok) {
+    btn.disabled = false; btn.style.opacity = '1';
+  } else {
+    btn.disabled = true; btn.style.opacity = '.4';
+  }
+}
+
+function expAnalisar() {
+  // Garante que PV03 está pronto antes de processar
+  if (!window.PV03_POR_PEDIDO || Object.keys(window.PV03_POR_PEDIDO).length === 0) {
+    alert('O PV03 ainda não foi carregado. Carregue o PV03 primeiro.');
+    return;
+  }
+  if (!EXP_VENDAS || !EXP_VENDAS.length) {
+    alert('O CSV de Vendas não foi carregado.');
+    return;
+  }
+  processarExpress();
+}
+
+// Drag-and-drop no dropzone
+const nvsDropzone = document.getElementById('nvs-vendas-dropzone');
+['dragenter','dragover'].forEach(ev => nvsDropzone.addEventListener(ev, e => {
+  e.preventDefault(); nvsDropzone.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev => nvsDropzone.addEventListener(ev, e => {
+  e.preventDefault(); nvsDropzone.classList.remove('drag');
+}));
+nvsDropzone.addEventListener('drop', e => {
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('nvs-vendas-file').files = e.dataTransfer.files;
+    document.getElementById('nvs-vendas-file').dispatchEvent(new Event('change'));
+  }
+});
+
+function tentarProcessarExpress() {
+  // Precisa do CSV de vendas E do PV03 já processado
+  if (!EXP_VENDAS) return;
+  // Pegar mapa de status do PV03 global (window.PV03_POR_PEDIDO)
+  if (window.PV03_POR_PEDIDO && Object.keys(window.PV03_POR_PEDIDO).length > 0) {
+    EXP_PV03 = window.PV03_POR_PEDIDO;
+  }
+  processarExpress();
+}
+
+// Chamar tentarProcessarExpress após o PV03 ser processado
+// (hook no processarBoxlink existente)
+const _origProcessarBoxlink = typeof processarBoxlink === 'function' ? processarBoxlink : null;
+
+function isUtilDay(d) {
+  const wd = d.getDay();
+  return wd !== 0 && wd !== 6;
+}
+
+function diasUteisAte(inicio, fim) {
+  if (!inicio || !fim) return null;
+  let d = new Date(inicio), count = 0;
+  while (d <= fim) {
+    if (isUtilDay(d)) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+function nivelAtraso(diasAtraso) {
+  if (diasAtraso <= 0) return { label: 'No prazo', cor: '#16a34a', cls: 'g' };
+  if (diasAtraso <= 3)  return { label: '1-3 d.u. atraso', cor: '#d97706', cls: 'o' };
+  if (diasAtraso <= 7)  return { label: '4-7 d.u. atraso', cor: '#ea580c', cls: 'o' };
+  if (diasAtraso <= 14) return { label: '8-14 d.u. atraso', cor: '#dc2626', cls: 'r' };
+  return { label: '15+ d.u. atraso', cor: '#7f1d1d', cls: 'r' };
+}
+
+function expPkey(d, tipo) {
+  if (!d || isNaN(d)) return null;
+  if (tipo === 'mes') return d.toISOString().slice(0, 7);
+  if (tipo === 'semana') {
+    const day = d.getDay(), diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(new Date(d).setDate(diff)).toISOString().slice(0, 10);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function processarExpress() {
+  if (!EXP_VENDAS) return;
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const SLA_EXPRESS = 7; // dias úteis
+
+  // Pegar status do PV03 — usa o mapa global populado por processarBoxlink
+  const statusMap = {};
+  if (window.PV03_POR_PEDIDO && Object.keys(window.PV03_POR_PEDIDO).length > 0) {
+    Object.entries(window.PV03_POR_PEDIDO).forEach(([ped, info]) => {
+      statusMap[ped] = { status: info.status || '', dataConf: info.dataConf || null };
+    });
+  }
+
+  // Status que encerram o pedido (não são pendentes)
+  const STATUS_ENCERRADO = new Set([
+    'PEDIDO ENTREGUE','PEDIDO ENTREGUE PARCIAL','PEDIDO CANCELADO','* PEDIDO SUSPENSO *',
+    'AG. EMBARQUE','AG. CONFIRMAÇÃO DE ENTREGA'
+  ]);
+
+  // Processar CSV — filtrar Express pendentes
+  const pedidosExpress = {};
+  EXP_VENDAS.forEach(row => {
+    const formaEntrega = (row['Forma de Entrega'] || '').toString();
+    if (!formaEntrega.toLowerCase().includes('express')) return;
+
+    const numPedido = 'NVS-' + (row['Número do Pedido'] || '').toString().trim();
+    const dataStr = (row['Data'] || '').toString().split(' ')[0];
+    const [dd, mm, yyyy] = dataStr.split('/');
+    const dataVenda = dd && mm && yyyy ? new Date(`${yyyy}-${mm}-${dd}T00:00:00`) : null;
+    if (!dataVenda || isNaN(dataVenda)) return;
+
+    // Verificar status no PV03
+    const pv = statusMap[numPedido];
+    if (pv && STATUS_ENCERRADO.has(pv.status)) return; // pedido encerrado
+    if (pv && pv.dataConf) return; // já embalado
+
+    const nomeProd = (row['Nome do Produto'] || '').toString();
+    const match = nomeProd.match(/\(([^,]+),\s*([^)]+)\)\s*$/);
+
+    if (!pedidosExpress[numPedido]) {
+      pedidosExpress[numPedido] = {
+        pedido: numPedido,
+        dataVenda,
+        itens: [],
+        statusPV03: pv ? pv.status : '—'
+      };
+    }
+    pedidosExpress[numPedido].itens.push({
+      produto: nomeProd.replace(/\s*\(.*/, '').trim(),
+      cor: match ? match[1].trim() : '',
+      tam: match ? match[2].trim() : '',
+      qtde: parseFloat(row['Quantidade Comprada'] || 1) || 1
+    });
+  });
+
+  EXP_PEDIDOS_DETALHE = Object.values(pedidosExpress);
+  const totalPendentes = EXP_PEDIDOS_DETALHE.length;
+
+  // Calcular dias úteis decorridos e atraso para cada pedido
+  let somaTempoAtend = 0, countAtend = 0;
+  const diasPorPed = {};
+  EXP_PEDIDOS_DETALHE.forEach(p => {
+    const inicio = new Date(p.dataVenda);
+    const diasDecorridos = diasUteisAte(inicio, hoje);
+    const atraso = Math.max(0, diasDecorridos - SLA_EXPRESS);
+    p.diasDecorridos = diasDecorridos;
+    p.diasAtraso = atraso;
+    somaTempoAtend += diasDecorridos;
+    countAtend++;
+  });
+
+  const mediaTempoAtend = countAtend ? (somaTempoAtend / countAtend).toFixed(1) : 0;
+  const atrasados = EXP_PEDIDOS_DETALHE.filter(p => p.diasAtraso > 0).length;
+
+  // Agrupar por período
+  const agrup = document.getElementById('exp-agrup').value;
+  const grupos = {};
+  EXP_PEDIDOS_DETALHE.forEach(p => {
+    const k = expPkey(p.dataVenda, agrup);
+    if (!k) return;
+    if (!grupos[k]) grupos[k] = [];
+    grupos[k].push(p);
+  });
+
+  EXP_DADOS_PERIODOS = Object.entries(grupos)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([periodo, peds]) => {
+      const atrasadosPer = peds.filter(p => p.diasAtraso > 0);
+      const maxAtraso = Math.max(...peds.map(p => p.diasAtraso), 0);
+      const nivel = nivelAtraso(maxAtraso);
+      return {
+        periodo, peds,
+        n: peds.length,
+        pct: totalPendentes ? (peds.length / totalPendentes * 100).toFixed(1) : 0,
+        maxAtraso,
+        nivel
+      };
+    });
+
+  // Período que mais puxa a média
+  const periodoMaiorMedia = EXP_DADOS_PERIODOS.reduce((a, b) => {
+    const ma = a.peds.reduce((s, p) => s + p.diasDecorridos, 0) / a.peds.length;
+    const mb = b.peds.reduce((s, p) => s + p.diasDecorridos, 0) / b.peds.length;
+    return mb > ma ? b : a;
+  }, EXP_DADOS_PERIODOS[0] || { periodo: '—', peds: [] });
+
+  // KPIs
+  document.getElementById('exp-total').textContent = totalPendentes.toLocaleString('pt-BR');
+  document.getElementById('exp-atrasados').textContent = atrasados.toLocaleString('pt-BR');
+  document.getElementById('exp-atrasados-pct').textContent =
+    totalPendentes ? (atrasados / totalPendentes * 100).toFixed(1) + '% do total' : '';
+  document.getElementById('exp-media-dias').textContent = mediaTempoAtend + 'd';
+  document.getElementById('exp-periodo-pior').textContent = periodoMaiorMedia.periodo || '—';
+
+  // Exibir seção
+  document.getElementById('express-section').style.display = 'block';
+
+  // Renderizar
+  expRenderTabela();
+  expRenderGraficosPeriodos();
+  expRenderOfensores();
+}
+
+function expFiltrar() { processarExpress(); }
+
+function expRenderTabela() {
+  const tbody = document.getElementById('exp-tbody-periodos');
+  tbody.innerHTML = '';
+  EXP_SELECIONADOS.clear();
+  [...EXP_DADOS_PERIODOS].reverse().forEach(d => {
+    const n = d.nivel;
+    tbody.innerHTML += `<tr>
+      <td><input type="checkbox" class="exp-chk" value="${d.periodo}" onchange="expTogglePeriodo(this)"></td>
+      <td><strong>${(()=>{const p=d.periodo;if(/^\d{4}-\d{2}-\d{2}$/.test(p)){const[y,m,dd]=p.split('-');return dd+'/'+m+'/'+y;}if(/^\d{4}-\d{2}$/.test(p)){const[y,m]=p.split('-');return m+'/'+y;}return p;})()}</strong></td>
+      <td class="num"><strong>${d.n.toLocaleString('pt-BR')}</strong></td>
+      <td class="num" style="color:${n.cor};font-weight:700">${d.maxAtraso > 0 ? d.maxAtraso + ' d.u.' : '—'}</td>
+      <td class="num">${d.pct}%</td>
+      <td><span style="background:${n.cor}18;color:${n.cor};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">${n.label}</span></td>
+    </tr>`;
+  });
+}
+
+function expTogglePeriodo(chk) {
+  if (chk.checked) EXP_SELECIONADOS.add(chk.value);
+  else EXP_SELECIONADOS.delete(chk.value);
+  const temSelecao = EXP_SELECIONADOS.size > 0;
+  expAtualizarItens();
+}
+
+function expSelecionarTodos() {
+  document.querySelectorAll('.exp-chk').forEach(chk => {
+    chk.checked = true; EXP_SELECIONADOS.add(chk.value);
+  });
+  expAtualizarItensAsync();
+}
+
+function expLimparSelecao() {
+  document.querySelectorAll('.exp-chk').forEach(chk => { chk.checked = false; });
+  EXP_SELECIONADOS.clear();
+  expAtualizarItens();
+}
+
+function expVerItens() { expAtualizarItens(); }
+
+function expFiltrarPeriodo() {
+  const ini = document.getElementById('exp-dt-ini').value;
+  const fim = document.getElementById('exp-dt-fim').value;
+  if (!ini && !fim) return;
+  // Desmarcar tudo e selecionar apenas períodos no range
+  document.querySelectorAll('.exp-chk').forEach(chk => {
+    const p = chk.value; // formato YYYY-MM-DD ou YYYY-MM
+    const dentroIni = !ini || p >= ini.slice(0, p.length);
+    const dentroFim = !fim || p <= fim.slice(0, p.length);
+    chk.checked = dentroIni && dentroFim;
+    if (chk.checked) EXP_SELECIONADOS.add(p);
+    else EXP_SELECIONADOS.delete(p);
+  });
+  expAtualizarItens();
+}
+
+function expLimparFiltroData() {
+  document.getElementById('exp-dt-ini').value = '';
+  document.getElementById('exp-dt-fim').value = '';
+  expLimparSelecao();
+}
+
+function expAtualizarItensAsync() {
+  // Atualiza o título imediatamente mas adia a renderização das linhas
+  const periodosSel = [...EXP_SELECIONADOS];
+  const pedidosSel = EXP_DADOS_PERIODOS.filter(d => periodosSel.includes(d.periodo)).flatMap(d => d.peds);
+  document.getElementById('exp-itens-titulo').textContent =
+    periodosSel.length > 0
+      ? `Itens pendentes — ${pedidosSel.length.toLocaleString('pt-BR')} pedido(s) selecionado(s) — clique em Exportar para ver detalhes`
+      : 'Itens pendentes — selecione períodos acima';
+  document.getElementById('exp-tbody-itens').innerHTML =
+    '<tr><td colspan="7" style="text-align:center;padding:12px;color:var(--txt-s)">Seleção grande — use Exportar para ver os itens</td></tr>';
+}
+
+function expAtualizarItens() {
+  const periodosSel = [...EXP_SELECIONADOS];
+  const pedidosSel = EXP_DADOS_PERIODOS
+    .filter(d => periodosSel.includes(d.periodo))
+    .flatMap(d => d.peds);
+
+  document.getElementById('exp-itens-titulo').textContent =
+    periodosSel.length > 0
+      ? `Itens pendentes — ${pedidosSel.length.toLocaleString('pt-BR')} pedido(s) selecionado(s)`
+      : 'Itens pendentes — selecione períodos acima';
+
+  const tbody = document.getElementById('exp-tbody-itens');
+  tbody.innerHTML = '';
+  pedidosSel.forEach(p => {
+    p.itens.forEach(item => {
+      tbody.innerHTML += `<tr>
+        <td>${p.pedido}</td>
+        <td>${p.dataVenda.toLocaleDateString('pt-BR')}</td>
+        <td>${expNormProduto(item.produto)}</td>
+        <td>${item.cor}</td>
+        <td>${item.tam}</td>
+        <td class="num">${item.qtde}</td>
+        <td><span style="font-size:10px;color:var(--txt-s)">${p.statusPV03}</span></td>
+      </tr>`;
+    });
+  });
+}
+
+function expExportarItens() {
+  const periodosSel = [...EXP_SELECIONADOS];
+  // Se nada selecionado, exportar todos
+  const pedidosSel = periodosSel.length > 0
+    ? EXP_DADOS_PERIODOS.filter(d => periodosSel.includes(d.periodo)).flatMap(d => d.peds)
+    : EXP_PEDIDOS_DETALHE;
+  if (!pedidosSel.length) { alert('Nenhum pedido para exportar.'); return; }
+
+  const rows = [];
+  pedidosSel.forEach(p => {
+    p.itens.forEach(item => {
+      rows.push({
+        'Pedido': p.pedido,
+        'Data da Venda': p.dataVenda.toLocaleDateString('pt-BR'),
+        'Produto': expNormProduto(item.produto),
+        'Cor': item.cor,
+        'Tamanho': item.tam,
+        'Qtde': item.qtde,
+        'Dias decorridos (d.u.)': p.diasDecorridos,
+        'Atraso (d.u.)': p.diasAtraso,
+        'Status PV03': p.statusPV03
+      });
+    });
+  });
+
+  // ── ABA 1: Detalhado ──
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Detalhado');
+
+  // ── ABA 2: Consolidado ──
+  // Total de pedidos na seleção + agrupamento por item
+  const totalPedidos = new Set(pedidosSel.map(p => p.pedido)).size;
+  const consolidado = {};
+  rows.forEach(r => {
+    const tam = r['Tamanho'] || r['Tam'] || '';
+    const chave = `${r['Produto']}|${r['Cor']}|${tam}`;
+    if (!consolidado[chave]) consolidado[chave] = {produto: r['Produto'], cor: r['Cor'], tam: tam, qtde_total: 0, pedidos: new Set()};
+    consolidado[chave].qtde_total += (parseFloat(r['Qtde']) || 1);
+    if (r['Pedido']) consolidado[chave].pedidos.add(r['Pedido']);
+  });
+
+  // Usar array de arrays para garantir ordem exata das colunas
+  const rowsConsol = [
+    [`Total de pedidos exportados: ${totalPedidos}`, '', '', '', ''],
+    ['', '', '', '', ''],
+    ['PRODUTO', 'COR', 'TAMANHO', 'QTD TOTAL', 'PEDIDOS COM ESSE ITEM'],
+    ...Object.values(consolidado)
+      .sort((a,b) => b.qtde_total - a.qtde_total)
+      .map(c => [expNormProduto(c.produto), c.cor, c.tam, c.qtde_total, c.pedidos.size])
+  ];
+  const wsConsol = XLSX.utils.aoa_to_sheet(rowsConsol);
+  wsConsol['!cols'] = [{wch:32},{wch:16},{wch:8},{wch:12},{wch:22}];
+  XLSX.utils.book_append_sheet(wb, wsConsol, 'Consolidado');
+
+  const sufixo = periodosSel.length > 0 ? periodosSel[0] : 'todos';
+  XLSX.writeFile(wb, `express_pendentes_${sufixo}.xlsx`);
+}
+
+function expRenderGraficosPeriodos() {
+  if (expChartPeriodos) { expChartPeriodos.destroy(); expChartPeriodos = null; }
+  const d = EXP_DADOS_PERIODOS;
+  expChartPeriodos = new Chart(document.getElementById('exp-chart-periodos'), {
+    type: 'bar',
+    data: {
+      labels: d.map(x => {
+        // Converter para formato BR: YYYY-MM-DD → DD/MM/YYYY, YYYY-MM → MM/YYYY
+        const p = x.periodo;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(p)) {
+          const [y,m,dd] = p.split('-'); return `${dd}/${m}/${y}`;
+        } else if (/^\d{4}-\d{2}$/.test(p)) {
+          const [y,m] = p.split('-'); return `${m}/${y}`;
+        }
+        return p;
+      }),
+      datasets: [{
+        label: 'Pedidos Express pendentes',
+        data: d.map(x => x.n),
+        backgroundColor: d.map(x => x.nivel.cor + 'CC'),
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.parsed.y} pedidos (${d[ctx.dataIndex].pct}% do total)` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 45 } },
+        y: { ticks: { callback: v => v.toLocaleString('pt-BR') } }
+      }
+    }
+  });
+}
+
+function expRenderOfensores() {
+  if (expChartOfensores) { expChartOfensores.destroy(); expChartOfensores = null; }
+  const contProd = {};
+  EXP_PEDIDOS_DETALHE.forEach(p => {
+    p.itens.forEach(item => {
+      contProd[item.produto] = (contProd[item.produto] || 0) + 1;
+    });
+  });
+  const top = Object.entries(contProd)
+    .sort((a, b) => b[1] - a[1])   // maior primeiro
+    .slice(0, 15)                   // top 15 maiores
+    .map(([nome, n]) => [expNormProduto(nome), n]);
+
+  expChartOfensores = new Chart(document.getElementById('exp-chart-ofensores'), {
+    type: 'bar',
+    data: {
+      labels: top.map(x => x[0]),
+      datasets: [{
+        label: 'Pedidos Express com item pendente',
+        data: top.map(x => x[1]),
+        backgroundColor: 'rgba(91,33,182,.75)',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { callback: v => v.toLocaleString('pt-BR') } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+
+function exportarPendentesMensal(key) {
+  const fonte = key === 'BOXLINK' ? window.DETALHE_BOXLINK : window.DETALHE_MARKET;
+
+  // Apenas pendentes (sem data de embalagem)
+  const pendentes = fonte.filter(d => !d.dataEmbalagem);
+  if (!pendentes.length) { alert('Nenhum pedido pendente encontrado.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── ABA 1: RESUMIDO ──
+  const resumido = pendentes.map(d => ({
+    'Pedido':          d.pedido,
+    'Plataforma':      d.plataforma || 'Boxlink',
+    'Data da venda':   d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '—',
+    'Mês':             d.dataVenda ? d.dataVenda.toISOString().slice(0,7) : '—',
+    'Dias decorridos': d.dias !== null && d.dias !== undefined ? d.dias : '—',
+    'Nível':           d.bucketLabel || 'BACKLOG',
+  }));
+  const wsRes = XLSX.utils.json_to_sheet(resumido);
+  wsRes['!cols'] = [{wch:16},{wch:10},{wch:14},{wch:8},{wch:16},{wch:36}];
+  XLSX.utils.book_append_sheet(wb, wsRes, 'Resumido');
+
+  // ── ABA 2: DETALHADO (itens do PV03 já carregado) ──
+  const itensPorPedido = window.ITENS_POR_PEDIDO_PV03 || {};
+  const detalhado = [];
+  pendentes.forEach(d => {
+    const numStr  = String(d.pedido).replace('NVS-', '');
+    const itens   = itensPorPedido[numStr] || itensPorPedido[d.pedido] || [];
+    const nivel   = d.bucketLabel || 'BACKLOG';
+    const dvStr   = d.dataVenda ? d.dataVenda.toLocaleDateString('pt-BR') : '—';
+    const diasStr = d.dias !== null && d.dias !== undefined ? d.dias : '—';
+    if (!itens.length) {
+      detalhado.push({
+        'Pedido': d.pedido, 'Data da venda': dvStr,
+        'Plataforma': d.plataforma || 'Boxlink',
+        'Dias decorridos': diasStr, 'Nível': nivel,
+        'Produto': '—', 'Cor': '—', 'Tam': '—', 'Qtde': '—'
+      });
+    } else {
+      itens.forEach((item, i) => {
+        detalhado.push({
+          'Pedido':          d.pedido,
+          'Data da venda':   dvStr,
+          'Plataforma':      d.plataforma || 'Boxlink',
+          'Dias decorridos': diasStr,
+          'Nível':           nivel,
+          'Produto': expNormProduto(item.produto),
+          'Cor':     item.cor,
+          'Tam':     item.tam,
+          'Qtde':    item.qtde
+        });
+      });
+    }
+  });
+  const wsDet = XLSX.utils.json_to_sheet(detalhado);
+  wsDet['!cols'] = [{wch:16},{wch:14},{wch:10},{wch:16},{wch:36},{wch:30},{wch:16},{wch:8},{wch:6}];
+  XLSX.utils.book_append_sheet(wb, wsDet, 'Detalhado');
+
+  XLSX.writeFile(wb, `pendentes_${key.toLowerCase()}_${pendentes.length}pedidos.xlsx`);
+}
+
 </script>
 
 <div id="modal-detalhe" class="modal-overlay" style="display:none" onclick="if(event.target===this) fecharDetalhe()">
@@ -1884,6 +2845,12 @@ function renderMarketplace(total, embalados, contagens, mensal, porPlataforma, h
 
 const STATUS_PENDENTE_PV03 = new Set([
   'AG. CONFERÊNCIA', 'AG. PRÉ NOTA', 'AG. PROCESSAMENTO', 'AG. DECISÃO DE ESTOQUE'
+]);
+
+// Status que encerram o pedido — não entram no backlog
+const STATUS_ENCERRADO_PV03 = new Set([
+  'PEDIDO ENTREGUE', 'PEDIDO ENTREGUE PARCIAL', 'PEDIDO CANCELADO',
+  '* PEDIDO SUSPENSO *', 'AG. EMBARQUE', 'AG. CONFIRMAÇÃO DE ENTREGA'
 ]);
 
 let CALC_VENDAS = null, CALC_PV03 = null, CALC_CONTAGEM = null;
@@ -3609,25 +4576,21 @@ function exportarAfetadosDetalhe(){
 }
 </script>
 <script>
-// ══════════════════════════════════════
-// PRODUÇÃO × VENDAS — namespace PV
-// ══════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// PRODUÇÃO × VENDAS — lógica completa (namespace PV)
+// ══════════════════════════════════════════════════════
+
 const PV = {
   files:{nuv:null,pv3:null,rec:null},
   data:{nuv:[],pv3:[],rec:[]},
   charts:{},
-  triP:'semana', volP:'semana', volTab:'modelo', volMod:'TODOS',
-  veP:'semana', veTab:'modelo', veMod:'TODOS',
-  tCat:'TODOS', tBusca:'',
-  sortSt:{}
+  alocBusca:''
 };
-const PVC = {};
+const PVC = {}; // resultados calculados
 
-const PV_BRINDES = ['ADESIVO','BLOQUINHO','DREAM BOX','LOOK SURPRESA','KIT PUMP',
-  'PRESENTE','OCULOS','ÓCULOS','COPO','INFLU','CHAVEIRO','BRINDE','TOP BRINDE',
-  'SAIA BRINDE','SURPRISE','PNG','CARD'];
-
-const PV_MAP = {
+const PV_BRINDES = ['BRINDE','PNG','ADESIVO','BLOQUINHO','LOOK SURPRESA','DREAM BOX',
+  'OCULOS','ÓCULOS','COPO','CARD','PRESENTE','CHAVEIRO','SURPRISE','INFLU'];
+const PV_PROD_MAP = {
   'TEDDY':'CALÇA TEDDY','DUNA':'CALÇA DUNA','NIKKI':'CALÇA NIKKI',
   'SELENA':'CALÇA SELENA','MIRANDA':'CALÇA MIRANDA','CAPRI':'CALÇA CAPRI',
   'JESSI':'TRICOT JESSI','NAOMI':'TRICOT NAOMI',
@@ -3639,26 +4602,33 @@ const PV_MAP = {
   'LIA':'SAIA LIA','MIMI':'BLUSA MIMI','LEXIE':'BLUSA LEXIE'
 };
 
+// Status do PV03 — classificação operacional
+const PV_STATUS_MAP = {
+  'PEDIDO ENTREGUE':           {label:'Entregue',     tipo:'atendido', cor:'#16a34a'},
+  'PEDIDO ENTREGUE PARCIAL':   {label:'Parcial',      tipo:'parcial',  cor:'#d97706'},
+  'AG. CONFERÊNCIA':           {label:'Ag. Conferência', tipo:'fila',  cor:'#5b21b6'},
+  'AG. CONFIRMAÇÃO DE ENTREGA':{label:'Ag. Confirmação', tipo:'fila',  cor:'#7c3aed'},
+  'AG. EMBARQUE':              {label:'Ag. Embarque', tipo:'fila',     cor:'#6d28d9'},
+  'AG. PROCESSAMENTO':         {label:'Ag. Processamento', tipo:'fila',cor:'#8b5cf6'},
+  'AG. PRÉ NOTA':              {label:'Ag. Pré Nota', tipo:'fila',     cor:'#a78bfa'},
+  'AG. DECISÃO DE ESTOQUE':    {label:'Ag. Decisão Estoque', tipo:'travado', cor:'#dc2626'},
+  '* PEDIDO SUSPENSO *':       {label:'Suspenso',     tipo:'travado',  cor:'#b91c1c'},
+  'PEDIDO CANCELADO':          {label:'Cancelado',    tipo:'cancelado',cor:'#6b7280'},
+};
+
+// ── helpers ──
 function pvEl(id){return document.getElementById('pv-'+id);}
 function pvProg(pct,msg){pvEl('prog-bar').style.width=pct+'%';pvEl('prog-txt').textContent=msg;}
+function pvBrinde(n){return PV_BRINDES.some(b=>String(n).toUpperCase().includes(b));}
 function pvNorm(s){return String(s||'').toUpperCase().trim().replace(/^[A-Z0-9]+[-–]\s*/,'').replace(/\s*\(.*/,'').trim();}
-function pvBrinde(m){const u=String(m).toUpperCase();return PV_BRINDES.some(b=>u.includes(b));}
-function pvCat(m){
-  const u=String(m).toUpperCase();
-  if(u.includes('CALÇA')||u.includes('NIKKI')||u.includes('TEDDY')||u.includes('DUNA')||u.includes('SELENA')||u.includes('MIRANDA')||u.includes('CAPRI')) return 'CALÇA';
-  if(u.includes('TRICOT')||u.includes('JESSI')||u.includes('NAOMI')||u.includes('CASACO')) return 'TRICOT';
-  if(u.includes('BIQUINI')||u.includes('BIQUÍNI')||u.includes('MARQUINHA')||u.includes('CORTININHA')) return 'BIQUINI';
-  if(u.includes('VESTIDO')||u.includes('ANY')||u.includes('PÉROLA')||u.includes('ALICIA')) return 'VESTIDO';
-  if(u.includes('BODY')||u.includes('AMANDA')||u.includes('MATILDA')||u.includes('MAITÊ')) return 'BODY';
-  if(u.includes('TOP ')||u.includes(' TOP')||u.includes('MANDI')||u.includes('ALISON')||u.includes('MIA')||u.includes('LANA')||u.includes('GABRIELA')||u.includes('HAILEY')) return 'TOP';
-  if(u.includes('SAIA')||u.includes('LIA')) return 'SAIA';
-  if(u.includes('BLUSA')||u.includes('REGATA')||u.includes('BRA')||u.includes('MIMI')||u.includes('LEXIE')) return 'BLUSA/REGATA';
-  return 'OUTROS';
-}
-function pvBarCor(d){return d<=7?'#16a34a':d<=14?'#d97706':d<=21?'#ea580c':'#dc2626';}
-function pvBadge(d){return d<=7?'bg':d<=14?'bo':'br';}
+function pvNormProd(peca){const p=peca.toUpperCase().trim();return PV_PROD_MAP[p]||p;}
 function pvXml(s){return s?s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'"):s;}
-function pvQ(arr,q){const s=[...arr].sort((a,b)=>a-b);return s[Math.min(Math.floor(s.length*q),s.length-1)]||0;}
+function pvFmt(n){return Math.round(n||0).toLocaleString('pt-BR');}
+function pvPkey(d,tipo){
+  if(!d||isNaN(d))return null;
+  if(tipo==='semana'){const day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);return new Date(new Date(d).setDate(diff)).toISOString().slice(0,10);}
+  return d.toISOString().slice(0,7);
+}
 
 // ── Upload ──
 function pvOnDrag(e,id){e.preventDefault();pvEl(id).classList.add('drag');}
@@ -3674,63 +4644,50 @@ function pvHandle(file,t){
   pvEl('btn-analisar').disabled=!ok;
   pvEl('btn-analisar').style.opacity=ok?'1':'.4';
 }
-function pvVoltarUpload(){
-  pvEl('dash').style.display='none';
-  pvEl('upload').style.display='block';
+function pvVoltarUpload(){pvEl('dash').style.display='none';pvEl('upload').style.display='block';}
+function pvSubTab(id,btn){
+  ['resumo','geral','alocacao','status','fila'].forEach(t=>{pvEl('tab-'+t).style.display=t===id?'block':'none';});
+  pvEl('dash').querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
 }
+function pvAlocBusca(v){PV.alocBusca=v;pvRenderAlocTabela();}
 
-// ── Parser PV03 (SpreadsheetML via regex — sem DOMParser) ──
+// ── Parsers ──
 function pvParsePV03text(text){
-  // Mesma abordagem do parseSpreadsheetMLLeve do dash:
-  // split por </Row> para nunca capturar bloco inteiro de Row
-  // Cell regex leve aplicado em cada linha separadamente
-  const cellRe = /<Cell[^>]*>(?:<Data[^>]*>([\s\S]*?)<\/Data>)?<\/Cell>/g;
-  const rows = text.split('</Row>');
-  const items = [];
-  let first = true;
-  for (let ri = 0; ri < rows.length; ri++) {
-    const row = rows[ri];
-    if (row.indexOf('<Row>') === -1 && row.indexOf('<Row ') === -1) continue;
-    const vals = [];
-    cellRe.lastIndex = 0;
-    let cm;
-    while ((cm = cellRe.exec(row)) !== null) vals.push(pvXml(cm[1]) || '');
-    if (vals.length < 4) continue;
-    if (first) { first = false; continue; } // pula header
-    // col 5 = Prefat Excluído? — ignorar cancelados
-    if ((vals[5] || '').trim() === '1') continue;
-    const modelo = pvNorm(vals[8] || '');
-    if (!modelo || pvBrinde(modelo)) continue;
-    const dvStr = vals[1] || null;
-    const dcStr = vals[3] || null;
-    const dv = dvStr ? new Date(dvStr) : null;
-    const dc = dcStr ? new Date(dcStr) : null;
-    let dias = null;
-    if (dv && dc && !isNaN(dv) && !isNaN(dc)) {
-      dias = Math.round((dc - dv) / 86400000);
-      if (dias < 0) dias = null;
-    }
-    items.push({
-      status:  vals[0] || '',
-      data_venda: dv,
-      data_conf:  dc,
-      pedido:  vals[2] || '',
-      modelo,
-      tam:  (vals[9]  || '').toUpperCase().trim(),
-      cor:  (vals[10] || '').toUpperCase().trim(),
-      qtde: parseFloat(vals[13]) || 0,
-      dias_exp: dias
-    });
+  const rows=text.split('</Row>');
+  const cellRe=/<Cell[^>]*>(?:<Data[^>]*>([\s\S]*?)<\/Data>)?<\/Cell>/g;
+  const items=[];
+  let first=true;
+  for(const row of rows){
+    if(row.indexOf('<Row>')===-1&&row.indexOf('<Row ')===-1)continue;
+    const vals=[];let cm;cellRe.lastIndex=0;
+    while((cm=cellRe.exec(row))!==null)vals.push(pvXml(cm[1])||'');
+    if(vals.length<4)continue;
+    if(first){first=false;continue;}
+    if((vals[5]||'').trim()==='1')continue; // prefat excluído
+    const st=vals[0]||'';
+    const dv=vals[1]?new Date(vals[1]):null;
+    const ped=vals[2]||'';
+    const dc=vals[3]?new Date(vals[3]):null;
+    const desc=pvXml(vals[8])||'';
+    const tam=(vals[9]||'').toUpperCase().trim();
+    const cor=(vals[10]||'').toUpperCase().trim();
+    const qtde=parseFloat(vals[13])||0;
+    const modelo=pvNorm(desc);
+    if(pvBrinde(modelo)||!modelo)continue;
+    let dias=null;
+    if(dv&&dc&&!isNaN(dv)&&!isNaN(dc)){dias=Math.round((dc-dv)/86400000);if(dias<0)dias=null;}
+    items.push({status:st,data_venda:dv,data_conf:dc,pedido:ped,modelo,cor,tam,qtde,dias_exp:dias});
   }
   return items;
 }
+
 async function pvParsePV03(file){
   const buf=await file.arrayBuffer();
   let text;
   try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}
   catch(e){text=new TextDecoder('windows-1252').decode(buf);}
-  pvProg(30,'Parseando PV03...');
-  await new Promise(r=>setTimeout(r,10));
+  pvProg(30,'Parseando PV03...');await new Promise(r=>setTimeout(r,10));
   return pvParsePV03text(text);
 }
 
@@ -3748,7 +4705,7 @@ async function pvParseRec(file){
     const peca=String(r['PEÇA']||'').toUpperCase().trim();
     const cor=String(r['COR']||'').toUpperCase().trim();
     const total=parseFloat(r['TOTAL'])||0;
-    const modeloNorm=PV_MAP[peca]||peca;
+    const modeloNorm=pvNormProd(peca);
     const porTam={};
     for(const s of ['PP','P','M','G',32,34,36,38,40,42]){const v=parseFloat(r[s])||0;if(v>0)porTam[String(s)]=v;}
     items.push({data,peca,cor,modeloNorm,total,porTam});
@@ -3766,7 +4723,7 @@ async function pvParseNuvem(file){
           const data=r['Data']?new Date(r['Data'].split(' ')[0].split('/').reverse().join('-')):null;
           const nome=r['Nome do Produto']||'';
           const modelo=nome.replace(/\s*\(.*/,'').trim().toUpperCase();
-          if(!num||!nome)continue;
+          if(!num||!nome||pvBrinde(nome))continue;
           items.push({num:'NVS-'+num,data,modelo,qtde:parseFloat(r['Quantidade Comprada'])||1});
         }
         resolve(items);
@@ -3775,7 +4732,7 @@ async function pvParseNuvem(file){
   });
 }
 
-// ── Análise ──
+// ── Análise principal ──
 async function pvIniciarAnalise(){
   pvEl('prog-wrap').style.display='block';
   pvEl('btn-analisar').disabled=true;
@@ -3783,13 +4740,13 @@ async function pvIniciarAnalise(){
   await new Promise(r=>setTimeout(r,50));
   try{
     PV.data.nuv=await pvParseNuvem(PV.files.nuv);
-    pvProg(20,'Lendo PV03...'); await new Promise(r=>setTimeout(r,50));
+    pvProg(20,'Lendo PV03...');await new Promise(r=>setTimeout(r,50));
     PV.data.pv3=await pvParsePV03(PV.files.pv3);
-    pvProg(65,'Lendo recebimento...'); await new Promise(r=>setTimeout(r,50));
+    pvProg(65,'Lendo recebimento...');await new Promise(r=>setTimeout(r,50));
     PV.data.rec=await pvParseRec(PV.files.rec);
-    pvProg(80,'Calculando...'); await new Promise(r=>setTimeout(r,50));
-    pvCalcTudo();
-    pvProg(100,'Pronto!'); await new Promise(r=>setTimeout(r,300));
+    pvProg(80,'Calculando...');await new Promise(r=>setTimeout(r,50));
+    await pvCalcTudo();
+    pvProg(100,'Pronto!');await new Promise(r=>setTimeout(r,300));
     pvEl('upload').style.display='none';
     pvEl('dash').style.display='block';
     pvRenderTudo();
@@ -3801,252 +4758,698 @@ async function pvIniciarAnalise(){
   }
 }
 
-// ── Cálculos ──
-function pvPKey(data,tipo){
-  if(!data||isNaN(data))return null;
-  if(tipo==='dia') return data.toISOString().slice(0,10);
-  if(tipo==='mes') return data.toISOString().slice(0,7);
-  const d=new Date(data),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);
-  return new Date(d.setDate(diff)).toISOString().slice(0,10);
-}
+// ── Cálcula
+async function pvCalcTudo(){
+  const pv3=PV.data.pv3, rec=PV.data.rec;
+  const meta=parseInt(pvEl('meta-semanal').value)||30000;
+  PVC.meta=meta;
 
-function pvAgrupar(pv3,rec,tipo){
-  const expP={},vendP={},pedP={},recP={};
-  for(const r of pv3){
-    const kv=pvPKey(r.data_venda,tipo);
-    if(kv) vendP[kv]=(vendP[kv]||0)+r.qtde;
-    if(r.data_conf){const ke=pvPKey(r.data_conf,tipo);if(ke){expP[ke]=(expP[ke]||0)+r.qtde;if(!pedP[ke])pedP[ke]=new Set();pedP[ke].add(r.pedido);}}
-  }
-  for(const r of rec){const kr=pvPKey(r.data,tipo);if(kr)recP[kr]=(recP[kr]||0)+r.total;}
-  const todos=new Set([...Object.keys(expP),...Object.keys(vendP),...Object.keys(recP)]);
-  return[...todos].sort().map(k=>({
-    periodo:k,expedido:Math.round(expP[k]||0),vendido:Math.round(vendP[k]||0),
-    recebido:Math.round(recP[k]||0),pedidos:pedP[k]?pedP[k].size:0,
-    gap_re:Math.round((recP[k]||0)-(expP[k]||0)),gap_ve:Math.round((expP[k]||0)-(vendP[k]||0))
-  }));
-}
+  // ── 1. Período ──
+  pvProg(81,'Calculando período...');await new Promise(r=>setTimeout(r,0));
+  const datas_v=pv3.filter(r=>r.data_venda).map(r=>r.data_venda);
+  PVC.dt_min=datas_v.reduce((a,b)=>a<b?a:b,datas_v[0]||new Date());
+  PVC.dt_max=datas_v.reduce((a,b)=>a>b?a:b,datas_v[0]||new Date());
 
-function pvCalcTempo(pv3,keys){
-  const g={};
-  for(const r of pv3){
-    if(r.dias_exp===null||r.dias_exp===undefined)continue;
-    const k=keys.map(x=>r[x]).join('||');
-    if(!g[k])g[k]={dias:[],modelo:r.modelo,cor:r.cor,tam:r.tam};
-    g[k].dias.push(r.dias_exp);
-  }
-  return Object.values(g).map(v=>({
-    modelo:v.modelo,cor:v.cor,tam:v.tam,n:v.dias.length,
-    media:+(v.dias.reduce((a,b)=>a+b,0)/v.dias.length).toFixed(1),
-    mediana:pvQ(v.dias,.5),p90:pvQ(v.dias,.9),cat:pvCat(v.modelo)
-  })).sort((a,b)=>b.media-a.media);
-}
+  // ── 2. Volume semanal ──
+  pvProg(82,'Volume semanal...');await new Promise(r=>setTimeout(r,0));
+  const volSem={};
+  for(const r of rec){const k=pvPkey(r.data,'semana');if(k)volSem[k]=(volSem[k]||0)+r.total;}
+  PVC.vol_semanal=Object.entries(volSem).sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([sem,total])=>({sem,total:Math.round(total),meta,ok:total>=meta}));
 
-function pvCalcVol(pv3,rec,keys){
-  const expM={},vendM={},recM={};
+  // ── 3. Vendido vs recebido por produto ──
+  pvProg(84,'Cruzando produtos...');await new Promise(r=>setTimeout(r,0));
+  const vendProd={},recProd={},trav={},susp={},parc={},cancel={};
   for(const r of pv3){
-    const k=keys.map(x=>r[x]).join('||');
-    vendM[k]=(vendM[k]||0)+r.qtde;
-    if(r.data_conf)expM[k]=(expM[k]||0)+r.qtde;
+    const m=r.modelo;
+    vendProd[m]=(vendProd[m]||0)+r.qtde;
+    const s=PV_STATUS_MAP[r.status];
+    if(s){
+      if(s.tipo==='travado'){trav[m]=(trav[m]||0)+r.qtde;}
+      if(r.status==='* PEDIDO SUSPENSO *'){susp[m]=(susp[m]||0)+r.qtde;}
+      if(r.status==='PEDIDO ENTREGUE PARCIAL'){parc[m]=(parc[m]||0)+r.qtde;}
+      if(r.status==='PEDIDO CANCELADO'){cancel[m]=(cancel[m]||0)+r.qtde;}
+    }
   }
+  for(const r of rec){const m=r.modeloNorm;recProd[m]=(recProd[m]||0)+r.total;}
+  const todos=new Set([...Object.keys(vendProd),...Object.keys(recProd)]);
+  PVC.produtos=[...todos].map(m=>({
+    produto:m,vendido:vendProd[m]||0,recebido:recProd[m]||0,
+    gap:(vendProd[m]||0)-(recProd[m]||0),
+    travado:trav[m]||0,suspenso:susp[m]||0,parcial:parc[m]||0,cancelado:cancel[m]||0
+  })).sort((a,b)=>b.gap-a.gap);
+
+  // ── 4. Alocação por produto+cor ──
+  pvProg(86,'Alocação por cor...');await new Promise(r=>setTimeout(r,0));
+  const vendCor={},recCor={};
+  for(const r of pv3){const k=`${r.modelo}|${r.cor}`;vendCor[k]=(vendCor[k]||0)+r.qtde;}
   for(const r of rec){
-    if(keys.includes('tam')){
-      for(const[tam,q]of Object.entries(r.porTam)){const k=keys.map(x=>x==='modelo'?r.modeloNorm:x==='cor'?r.cor:tam).join('||');recM[k]=(recM[k]||0)+q;}
-    }else{const k=keys.map(x=>x==='modelo'?r.modeloNorm:x==='cor'?r.cor:'').join('||');recM[k]=(recM[k]||0)+r.total;}
+    for(const[tam,q]of Object.entries(r.porTam)){const k=`${r.modeloNorm}|${r.cor}`;recCor[k]=(recCor[k]||0)+q;}
+    const k2=`${r.modeloNorm}|${r.cor}`;
+    if(!r.porTam||Object.keys(r.porTam).length===0)recCor[k2]=(recCor[k2]||0)+r.total;
   }
-  const todos=new Set([...Object.keys(expM),...Object.keys(vendM),...Object.keys(recM)]);
-  return[...todos].map(k=>{const[modelo,cor,tam]=k.split('||');
-    return{modelo:modelo||'',cor:cor||'',tam:tam||'',
-      expedido:Math.round(expM[k]||0),vendido:Math.round(vendM[k]||0),
-      recebido:Math.round(recM[k]||0),saldo:Math.round((expM[k]||0)-(vendM[k]||0))};
-  }).filter(r=>r.vendido>0||r.expedido>0||r.recebido>0).sort((a,b)=>b.vendido-a.vendido);
+  const todosCor=new Set([...Object.keys(vendCor),...Object.keys(recCor)]);
+  PVC.por_cor=[...todosCor].map(k=>{
+    const[produto,cor]=k.split('|');
+    const v=vendCor[k]||0,rc=recCor[k]||0;
+    return{produto,cor,vendido:v,recebido:rc,gap:v-rc};
+  }).sort((a,b)=>b.gap-a.gap);
+
+  // ── 5. Status dos pedidos ──
+  pvProg(87,'Status dos pedidos...');await new Promise(r=>setTimeout(r,0));
+  const statusPecas={},statusPedidos={},pedidosSet=new Set();
+  for(const r of pv3){
+    const st=PV_STATUS_MAP[r.status];
+    const label=st?st.label:r.status;
+    statusPecas[label]=(statusPecas[label]||0)+r.qtde;
+    if(!pedidosSet.has(r.pedido+r.status)){pedidosSet.add(r.pedido+r.status);statusPedidos[label]=(statusPedidos[label]||0)+1;}
+  }
+  PVC.status_pecas=statusPecas;
+  PVC.status_pedidos=statusPedidos;
+
+  // ── 6. Peças por pedido por mês ──
+  pvProg(88,'Peças por pedido...');await new Promise(r=>setTimeout(r,0));
+  const pecasPedidoMes={};
+  for(const r of pv3){
+    if(!r.data_venda)continue;
+    const mes=pvPkey(r.data_venda,'mes');
+    if(!pecasPedidoMes[mes])pecasPedidoMes[mes]={};
+    if(!pecasPedidoMes[mes][r.pedido])pecasPedidoMes[mes][r.pedido]=0;
+    pecasPedidoMes[mes][r.pedido]+=r.qtde;
+  }
+  PVC.pecas_por_pedido_mes=Object.entries(pecasPedidoMes).sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([mes,peds])=>{
+      const vals=Object.values(peds);
+      return{mes,media:+(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2),n_pedidos:vals.length};
+    });
+
+  // ── 7. Tamanho do pedido vs tempo e % travado ──
+  pvProg(90,'Agrupando pedidos...');await new Promise(r=>setTimeout(r,0));
+  const tamGrupos={1:{dias:[],travados:0,total:0},2:{dias:[],travados:0,total:0},
+    3:{dias:[],travados:0,total:0},4:{dias:[],travados:0,total:0},'5+':{dias:[],travados:0,total:0}};
+  const pedResumo={};
+  for(const r of pv3){
+    if(!pedResumo[r.pedido])pedResumo[r.pedido]={pecas:0,dias:null,travado:false};
+    pedResumo[r.pedido].pecas+=r.qtde;
+    if(r.dias_exp!==null&&pedResumo[r.pedido].dias===null)pedResumo[r.pedido].dias=r.dias_exp;
+    const st=PV_STATUS_MAP[r.status];
+    if(st&&st.tipo==='travado')pedResumo[r.pedido].travado=true;
+  }
+  for(const[,p]of Object.entries(pedResumo)){
+    const g=p.pecas>=5?'5+':String(Math.min(p.pecas,4));
+    if(!tamGrupos[g])continue;
+    tamGrupos[g].total++;
+    if(p.dias!==null)tamGrupos[g].dias.push(p.dias);
+    if(p.travado)tamGrupos[g].travados++;
+  }
+  PVC.tam_pedido=Object.entries(tamGrupos).map(([tam,g])=>({
+    tam,
+    media_dias:g.dias.length?+(g.dias.reduce((a,b)=>a+b,0)/g.dias.length).toFixed(1):0,
+    pct_travado:g.total?+(g.travados/g.total*100).toFixed(1):0,
+    total:g.total
+  }));
+
+  // ── 8. Distribuição tempo embalagem ──
+  pvProg(92,'Distribuição de tempo...');await new Promise(r=>setTimeout(r,0));
+  const faixas={};
+  const FAIXAS=['0-7','8-14','15-21','22-28','29-45','46+'];
+  for(const r of pv3){
+    if(r.dias_exp===null)continue;
+    const d=r.dias_exp;
+    const f=d<=7?'0-7':d<=14?'8-14':d<=21?'15-21':d<=28?'22-28':d<=45?'29-45':'46+';
+    faixas[f]=(faixas[f]||0)+1;
+  }
+  PVC.dist_tempo=FAIXAS.map(f=>({faixa:f,n:faixas[f]||0}));
+
+  // ── 9. Fila ──
+  pvProg(94,'Calculando fila...');await new Promise(r=>setTimeout(r,0));
+  // Pedidos únicos que têm pelo menos 1 SKU com data_conf
+  const pedTemConf=new Set(pv3.filter(r=>r.data_conf).map(r=>r.pedido));
+  // Pedidos únicos que têm pelo menos 1 SKU pendente (status ag./suspenso)
+  const pedTemPend=new Set(pv3.filter(r=>{
+    const st=(r.status||'').toUpperCase();
+    return st.includes('AG.')||st.includes('SUSPENSO');
+  }).map(r=>r.pedido));
+  // Pedidos verdadeiramente parados = têm pendente mas NENHUM SKU saiu
+  const pedParados=new Set([...pedTemPend].filter(p=>!pedTemConf.has(p)));
+  const pedidosTotal=new Set(pv3.map(r=>r.pedido)).size;
+  const parados=pedParados.size;
+  const criticos=new Set(pv3.filter(r=>r.dias_exp!==null&&r.dias_exp>=29).map(r=>r.pedido)).size;
+  const diasOrd=pv3.filter(r=>r.dias_exp!==null).map(r=>r.dias_exp).sort((a,b)=>a-b);
+  const mediana=diasOrd[Math.floor(diasOrd.length/2)]||0;
+  PVC.fila={pedidosTotal,parados,criticos,mediana,
+    pct_parados:pedidosTotal?+(parados/pedidosTotal*100).toFixed(1):0};
+
+  // ── 10. Saldo diário ──
+  pvProg(95,'Saldo diário...');await new Promise(r=>setTimeout(r,0));
+  // Contar por pedido único por dia — um pedido pode ter múltiplas linhas
+  const entradas={},saidas={};
+  const pedEntrada=new Set(),pedSaida=new Set();
+  for(const r of pv3){
+    if(r.data_venda&&!pedEntrada.has(r.pedido)){
+      pedEntrada.add(r.pedido);
+      const k=r.data_venda.toDateString();
+      if(!entradas[k])entradas[k]=new Set();
+      entradas[k].add(r.pedido);
+    }
+    if(r.data_conf&&!pedSaida.has(r.pedido)){
+      pedSaida.add(r.pedido);
+      const k=r.data_conf.toDateString();
+      if(!saidas[k])saidas[k]=new Set();
+      saidas[k].add(r.pedido);
+    }
+  }
+  const nEnt=Object.values(entradas).reduce((s,v)=>s+v.size,0)/Math.max(Object.keys(entradas).length,1);
+  const nSai=Object.values(saidas).reduce((s,v)=>s+v.size,0)/Math.max(Object.keys(saidas).length,1);
+  PVC.saldo_dia=Math.round(nSai-nEnt);
+  PVC.media_saidas=Math.round(nSai);
+  PVC.media_entradas=Math.round(nEnt);
+
+  // ── 11. Ranking ──
+  pvProg(96,'Ranking de gargalos...');await new Promise(r=>setTimeout(r,0));
+  const travProd={};
+  for(const r of pv3){
+    const st=PV_STATUS_MAP[r.status];
+    if(!st||st.tipo!=='travado')continue;
+    if(!travProd[r.modelo])travProd[r.modelo]=new Set();
+    travProd[r.modelo].add(r.pedido);
+  }
+  PVC.ranking=Object.entries(travProd)
+    .map(([m,s])=>({produto:m,pedidos_travados:s.size}))
+    .sort((a,b)=>b.pedidos_travados-a.pedidos_travados);
+
+  // ── 12. Por dentro do maior gargalo ──
+  pvProg(97,'Detalhando gargalo...');await new Promise(r=>setTimeout(r,0));
+  const maior=PVC.ranking[0]?.produto;
+  PVC.maior_gargalo=maior;
+  if(maior){
+    const ctMap={};
+    for(const r of pv3.filter(x=>x.modelo===maior)){
+      const k=`${r.cor} ${r.tam}`;
+      if(!ctMap[k])ctMap[k]={vendido:0,recebido:0};
+      ctMap[k].vendido+=r.qtde;
+    }
+    for(const r of rec.filter(x=>x.modeloNorm===maior)){
+      for(const[tam,q]of Object.entries(r.porTam)){
+        const k=`${r.cor} ${tam}`;
+        if(!ctMap[k])ctMap[k]={vendido:0,recebido:0};
+        ctMap[k].recebido+=q;
+      }
+    }
+    PVC.dentro_gargalo=Object.entries(ctMap)
+      .map(([k,v])=>({label:k,vendido:v.vendido,recebido:v.recebido,gap:v.vendido-v.recebido}))
+      .sort((a,b)=>b.gap-a.gap).slice(0,15);
+  }
+
+  // ── 13. Expedição por dia da semana ──
+  pvProg(98,'Capacidade semanal...');await new Promise(r=>setTimeout(r,0));
+  const diasSemana={0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+  const diasCount={0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+  for(const r of pv3){
+    if(!r.data_conf)continue;
+    const d=r.data_conf.getDay();
+    diasSemana[d]+=r.qtde;diasCount[d]++;
+  }
+  PVC.por_dia_semana=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+    .map((nm,i)=>({dia:nm,media:diasCount[i]?Math.round(diasSemana[i]/diasCount[i]):0}));
+
+  // ── 14. Com/sem produto-problema ──
+  pvProg(99,'Finalizando...');await new Promise(r=>setTimeout(r,0));
+  const PROBLEMAS=new Set((PVC.ranking.slice(0,10)||[]).map(r=>r.produto));
+  const comProb={1:{parados:0,total:0},2:{parados:0,total:0},3:{parados:0,total:0},4:{parados:0,total:0},'5+':{parados:0,total:0}};
+  const semProb={1:{parados:0,total:0},2:{parados:0,total:0},3:{parados:0,total:0},4:{parados:0,total:0},'5+':{parados:0,total:0}};
+  // Mapear se pedido tem produto-problema
+  const pedTemProb={};
+  for(const r of pv3){
+    if(PROBLEMAS.has(r.modelo))pedTemProb[r.pedido]=true;
+  }
+  for(const[ped,p]of Object.entries(pedResumo)){
+    const g=p.pecas>=5?'5+':String(Math.min(p.pecas,4));
+    const dest=pedTemProb[ped]?comProb:semProb;
+    if(dest[g]){dest[g].total++;if(p.travado)dest[g].parados++;}
+  }
+  PVC.com_prob=comProb;
+  PVC.sem_prob=semProb;
 }
 
-function pvCalcTudo(){
-  const pv3=PV.data.pv3,rec=PV.data.rec;
-  const dv=pv3.filter(r=>r.data_venda).map(r=>r.data_venda);
-  const dc=pv3.filter(r=>r.data_conf).map(r=>r.data_conf);
-  PVC.dt_min=new Date(dv.reduce((a,b)=>a<b?a:b,dv[0]||new Date()));
-  PVC.dt_max=new Date(dv.reduce((a,b)=>a>b?a:b,dv[0]||new Date()));
-  const dExp=new Set(dc.map(d=>d.toDateString())).size||1;
-  const dVend=new Set(dv.map(d=>d.toDateString())).size||1;
-  const dRec=new Set(rec.map(r=>r.data.toDateString())).size||1;
-  PVC.tot_exp=pv3.filter(r=>r.data_conf).reduce((s,r)=>s+r.qtde,0);
-  PVC.tot_vend=pv3.reduce((s,r)=>s+r.qtde,0);
-  PVC.tot_rec=rec.reduce((s,r)=>s+r.total,0);
-  PVC.med_exp=Math.round(PVC.tot_exp/dExp);
-  PVC.med_vend=Math.round(PVC.tot_vend/dVend);
-  PVC.med_rec=Math.round(PVC.tot_rec/dRec);
-  const pedDia={};
-  for(const r of pv3.filter(p=>p.data_conf)){const d=r.data_conf.toDateString();if(!pedDia[d])pedDia[d]=new Set();pedDia[d].add(r.pedido);}
-  const pdv=Object.values(pedDia).map(s=>s.size);
-  PVC.med_ped=Math.round(pdv.reduce((a,b)=>a+b,0)/(pdv.length||1));
-  PVC.passivo=PVC.med_vend-PVC.med_exp;
-  PVC.pend=PVC.tot_vend-PVC.tot_exp;
-  PVC.sem=pvAgrupar(pv3,rec,'semana');
-  PVC.mes=pvAgrupar(pv3,rec,'mes');
-  PVC.dia=pvAgrupar(pv3,rec,'dia');
-  PVC.tm=pvCalcTempo(pv3,['modelo']);
-  PVC.tmc=pvCalcTempo(pv3,['modelo','cor']);
-  PVC.tmct=pvCalcTempo(pv3,['modelo','cor','tam']);
-  PVC.vm=pvCalcVol(pv3,rec,['modelo']);
-  PVC.vmc=pvCalcVol(pv3,rec,['modelo','cor']);
-  PVC.vmct=pvCalcVol(pv3,rec,['modelo','cor','tam']);
-  PVC.modelos=[...new Set(pv3.map(r=>r.modelo).filter(Boolean))].sort();
+// ══════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════
+function pvDestroyChart(id){if(PV.charts[id]){PV.charts[id].destroy();delete PV.charts[id];}}
+
+function pvMkChart(id,config){
+  pvDestroyChart(id);
+  PV.charts[id]=new Chart(pvEl(id),config);
 }
 
-// ── Render ──
 function pvRenderTudo(){
-  pvEl('periodo-label').textContent=`${PVC.dt_min.toLocaleDateString('pt-BR')} → ${PVC.dt_max.toLocaleDateString('pt-BR')} · ${PV.data.pv3.length.toLocaleString()} linhas`;
-  const p=PVC.passivo;
-  pvEl('passivo-num').textContent=(p>0?'+':'')+p.toLocaleString('pt-BR')+' itens/dia';
-  pvEl('passivo-desc').textContent=p>0?`Expedição média ${PVC.med_exp.toLocaleString()} | Vendas médias ${PVC.med_vend.toLocaleString()} itens/dia — o passivo acumula a cada dia.`:`Operação equilibrada.`;
-  pvEl('k-exp').textContent=PVC.med_exp.toLocaleString('pt-BR');
-  pvEl('k-vend').textContent=PVC.med_vend.toLocaleString('pt-BR');
-  pvEl('k-rec').textContent=PVC.med_rec.toLocaleString('pt-BR');
-  pvEl('k-ped').textContent=PVC.med_ped.toLocaleString('pt-BR');
-  pvEl('k-pend').textContent=Math.abs(PVC.pend).toLocaleString('pt-BR');
-  pvRenderTri(); pvRenderSem(); pvRenderTempo(); pvRenderVol(); pvRenderVE(); pvPopMod();
+  pvEl('periodo-label').textContent=
+    `${PVC.dt_min.toLocaleDateString('pt-BR')} → ${PVC.dt_max.toLocaleDateString('pt-BR')} · ${PV.data.pv3.length.toLocaleString()} linhas`;
+  pvRenderResumo();
+  pvRenderGeral();
+  pvRenderAlocacao();
+  pvRenderStatus();
+  pvRenderFila();
 }
 
-function pvChart(canvasId,datasets,labels){
-  return new Chart(pvEl(canvasId),{data:{labels,datasets},options:{responsive:true,
-    plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
-      tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('pt-BR')}`}}},
-    scales:{x:{ticks:{font:{size:10},maxRotation:45},grid:{display:false}},
-            y:{ticks:{font:{size:11},callback:v=>v.toLocaleString('pt-BR')},grid:{color:'#f3f4f6'}}}}});
-}
+// ── ABA 1: RESUMO ──
+function pvRenderResumo(){
+  const meta=PVC.meta;
+  const semOk=PVC.vol_semanal.filter(s=>s.ok).length;
+  const semTotal=PVC.vol_semanal.length;
+  const gargalos=PVC.produtos.filter(p=>p.gap>0);
+  const totalTrav=PVC.produtos.reduce((s,p)=>s+p.travado,0);
+  const totalPed=PVC.fila.pedidosTotal;
+  const parados=PVC.fila.parados;
+  const pctPar=PVC.fila.pct_parados;
 
-function pvRenderTri(){
-  const d=PV.triP==='semana'?PVC.sem:PVC.mes;
-  if(PV.charts.tri)PV.charts.tri.destroy();
-  PV.charts.tri=pvChart('chart-tri',[
-    {type:'bar',label:'Recebido',data:d.map(x=>x.recebido),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
-    {type:'bar',label:'Expedido',data:d.map(x=>x.expedido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
-    {type:'line',label:'Vendas',data:d.map(x=>x.vendido),borderColor:'#f59e0b',backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,tension:.3}
-  ],d.map(x=>x.periodo));
-  const u=d.slice(-3);
-  const mE=u.reduce((s,x)=>s+x.expedido,0)/u.length;
-  const mV=u.reduce((s,x)=>s+x.vendido,0)/u.length;
-  const gap=Math.round(mV-mE);
-  const el=pvEl('insight-tri');
-  el.className='ins '+(gap>0?'r':'g');
-  el.innerHTML=gap>0?`<strong>⚠ Passivo crescendo:</strong> expedição média ${Math.round(mE).toLocaleString()} vs vendas ${Math.round(mV).toLocaleString()} — diferença de ${gap.toLocaleString()} itens/período.`:`<strong>✓ Operação equilibrada</strong> nos últimos períodos.`;
-}
+  pvEl('r-vol-semana').textContent=`${semOk}/${semTotal}`;
+  pvEl('r-vol-sub').textContent=`bateram a meta de ${pvFmt(meta)} peças`;
+  pvEl('r-gargalo-n').textContent=gargalos.length;
+  pvEl('r-gargalo-sub').textContent=`maior: ${gargalos[0]?.produto||'—'} (${pvFmt(gargalos[0]?.gap||0)} gap)`;
+  pvEl('r-travado').textContent=pvFmt(totalTrav);
+  pvEl('r-travado-sub').textContent=`em ${pvFmt(parados)} pedidos (${pctPar}%)`;
+  pvEl('r-prazo').textContent=PVC.fila.mediana+'d';
+  pvEl('r-prazo-sub').textContent=`metade dos pedidos demora mais`;
 
-function pvRenderSem(){
-  const tbody=pvEl('tbody-sem'); tbody.innerHTML='';
-  for(const d of PVC.sem.slice(-12).reverse()){
-    const g=d.gap_re,c=g>=0?'#16a34a':'#dc2626';
-    tbody.innerHTML+=`<tr><td>${d.periodo}</td><td>${d.expedido.toLocaleString()}</td><td>${d.pedidos.toLocaleString()}</td><td>${d.recebido.toLocaleString()}</td><td><span style="color:${c};font-weight:700">${g>=0?'+':''}${g.toLocaleString()}</span></td></tr>`;
+  pvEl('resumo-headline').innerHTML=
+    `<strong>Período analisado: ${PVC.dt_min.toLocaleDateString('pt-BR')} a ${PVC.dt_max.toLocaleDateString('pt-BR')}</strong><br>
+    ${semOk} de ${semTotal} semanas bateram a meta de produção — volume está evoluindo. 
+    Mas <strong>${gargalos.length} produtos</strong> venderam mais do que receberam, 
+    gerando <strong>${pvFmt(totalTrav)} peças travadas</strong> em ${pvFmt(parados)} pedidos parados. 
+    O prazo mediano até embalar é de <strong>${PVC.fila.mediana} dias</strong> — 
+    ${PVC.saldo_dia>0?`saindo ${pvFmt(PVC.saldo_dia)} pedidos/dia a mais do que entram`:'a fila não está encolhendo'}.`;
+
+  // Gráfico peças por pedido com projeção 90 dias
+  const meses=PVC.pecas_por_pedido_mes;
+  if(meses.length>=2){
+    // Calcular tendência (crescimento médio por mês nos últimos 3 meses)
+    const ultimos=meses.slice(-Math.min(3,meses.length));
+    const cresc=ultimos.length>=2
+      ?(ultimos[ultimos.length-1].media-ultimos[0].media)/(ultimos.length-1)
+      :0;
+    const ultimoMes=meses[meses.length-1];
+    // Gerar 3 meses de projeção (≈90 dias)
+    const projLabels=[],projData=[];
+    let mesAtual=new Date(ultimoMes.mes+'-01');
+    for(let i=1;i<=3;i++){
+      mesAtual=new Date(mesAtual.getFullYear(),mesAtual.getMonth()+1,1);
+      projLabels.push(mesAtual.toISOString().slice(0,7));
+      projData.push(+(ultimoMes.media+cresc*i).toFixed(2));
+    }
+    const labelsReal=meses.map(m=>m.mes);
+    const labelsProj=[ultimoMes.mes,...projLabels];
+    const dataReal=meses.map(m=>m.media);
+    const dataProj=[ultimoMes.media,...projData];
+    // Ponto de projeção em 90 dias
+    const proj90=projData[projData.length-1];
+
+    pvMkChart('chart-pecas-pedido',{
+      type:'line',
+      data:{
+        labels:[...labelsReal,...projLabels],
+        datasets:[
+          {label:'Real',data:[...dataReal,...projLabels.map(()=>null)],
+            borderColor:'#5b21b6',backgroundColor:'rgba(91,33,182,.12)',
+            borderWidth:2.5,pointRadius:5,tension:.2,fill:true},
+          {label:'Projeção (tendência)',data:[...meses.map((_,i)=>i<meses.length-1?null:dataReal[i]),...projData],
+            borderColor:'#dc2626',borderDash:[6,4],backgroundColor:'transparent',
+            borderWidth:2,pointRadius:4,tension:.2,
+            pointStyle:labelsProj.map((_,i)=>i===0?'circle':'triangle')}
+        ]
+      },
+      options:{responsive:true,
+        plugins:{
+          legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+          tooltip:{callbacks:{label:c=>c.parsed.y!==null?`${c.dataset.label}: ${c.parsed.y.toFixed(2)} peças/pedido`:''}}
+        },
+        scales:{
+          x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45}},
+          y:{min:0,ticks:{callback:v=>v.toFixed(1)},grid:{color:'#f3f4f6'}}
+        }}
+    });
+
+    const tendencia=cresc.toFixed(2);
+    pvEl('insight-pecas').innerHTML=
+      cresc>0
+        ?`<strong>Tendência de crescimento:</strong> +${tendencia} peças/pedido por mês. Projeção em 90 dias: <strong>${proj90.toFixed(1)} peças/pedido</strong> — cada item a mais é um ponto adicional de risco de ruptura.`
+        :`<strong>Tendência estável</strong>: ${ultimoMes.media.toFixed(2)} peças/pedido.`;
+    pvEl('insight-pecas').className='ins '+(cresc>0?'r':'g');
+  }
+
+  // Tabela top gargalos
+  const tbody=pvEl('tbody-resumo-gargalos'); tbody.innerHTML='';
+  for(const p of PVC.produtos.filter(x=>x.gap>0).slice(0,10)){
+    const cor=p.gap>3000?'#dc2626':p.gap>1000?'#d97706':'#92400e';
+    tbody.innerHTML+=`<tr>
+      <td><strong>${p.produto}</strong></td>
+      <td class="num">${pvFmt(p.vendido)}</td>
+      <td class="num">${pvFmt(p.recebido)}</td>
+      <td class="num" style="color:${cor};font-weight:700">+${pvFmt(p.gap)}</td>
+      <td class="num" style="color:#dc2626">${pvFmt(p.travado)}</td>
+    </tr>`;
   }
 }
 
-function pvRenderTempo(){
-  const tab=pvEl('tempo-tab').value;
-  const d0=tab==='modelo'?PVC.tm:tab==='mc'?PVC.tmc:PVC.tmct;
-  const minN=tab==='mct'?30:tab==='mc'?20:10;
-  let d=d0.filter(r=>r.n>=minN);
-  if(PV.tCat!=='TODOS') d=d.filter(r=>r.cat===PV.tCat);
-  if(PV.tBusca) d=d.filter(r=>r.modelo.includes(PV.tBusca.toUpperCase()));
-  const maxM=Math.max(...d.map(r=>r.media),1);
-  const pior=PVC.tm[0],pm=PVC.tmc[0],pt=PVC.tmct[0];
-  const mg=PVC.tm.reduce((s,r)=>s+r.media*r.n,0)/PVC.tm.reduce((s,r)=>s+r.n,1);
-  pvEl('t-pm').textContent=pior?pior.media+'d':'—'; pvEl('t-pm-n').textContent=pior?pior.modelo:'—';
-  pvEl('t-pc').textContent=pm?pm.media+'d':'—';     pvEl('t-pc-n').textContent=pm?pm.modelo+' '+pm.cor:'—';
-  pvEl('t-pt').textContent=pt?pt.media+'d':'—';     pvEl('t-pt-n').textContent=pt?pt.modelo+' '+pt.cor+' '+pt.tam:'—';
-  pvEl('t-mg').textContent=mg.toFixed(1)+'d';
-  const cols=tab==='modelo'?['Modelo','Cat','N','Média','Mediana','P90','']:tab==='mc'?['Modelo','Cor','N','Média','Mediana','P90','']:['Modelo','Cor','Tam','N','Média','Mediana','P90',''];
-  pvEl('thead-tempo').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
-  const tbody=pvEl('tbody-tempo'); tbody.innerHTML='';
-  for(const r of d){
-    const pct=r.media/maxM*100;
-    const base=`<td>${r.n.toLocaleString()}</td><td><span class="badge ${pvBadge(r.media)}">${r.media}d</span></td><td>${r.mediana}d</td><td>${r.p90}d</td><td><div style="height:6px;background:#f3f4f6;border-radius:3px;width:80px"><div style="height:6px;width:${pct}%;background:${pvBarCor(r.media)};border-radius:3px"></div></div></td>`;
-    if(tab==='modelo') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td style="font-size:10px;color:var(--txt-s)">${r.cat}</td>${base}</tr>`;
-    else if(tab==='mc') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td>${base}</tr>`;
-    else tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.tam}</td>${base}</tr>`;
+// ── ABA 2: VISÃO GERAL ──
+function pvRenderGeral(){
+  pvEl('meta-label').textContent=`Meta: ${pvFmt(PVC.meta)} peças/semana`;
+  const semOk=PVC.vol_semanal.filter(s=>s.ok).length;
+  const semTotal=PVC.vol_semanal.length;
+  pvEl('insight-vol').innerHTML=
+    `<strong>${semOk} de ${semTotal} semanas</strong> bateram a meta de ${pvFmt(PVC.meta)} peças. 
+    ${semOk>=semTotal*.6?'Volume em evolução — mas volume não resolve alocação.':'Volume ainda abaixo da meta na maioria das semanas.'}`;
+  pvEl('insight-vol').className='ins '+(semOk>=semTotal*.5?'g':'r');
+
+  // Volume semanal
+  const vols=PVC.vol_semanal;
+  pvMkChart('chart-vol-semanal',{
+    type:'bar',
+    data:{
+      labels:vols.map(v=>v.sem),
+      datasets:[
+        {label:'Recebido',data:vols.map(v=>v.total),
+          backgroundColor:vols.map(v=>v.ok?'rgba(22,163,74,.75)':'rgba(220,38,38,.6)'),borderRadius:3},
+        {label:'Meta',data:vols.map(()=>PVC.meta),type:'line',
+          borderColor:'#5b21b6',borderDash:[6,3],borderWidth:1.5,pointRadius:0,backgroundColor:'transparent'}
+      ]
+    },
+    options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toLocaleString('pt-BR')}`}}},
+      scales:{x:{ticks:{font:{size:9},maxRotation:45},grid:{display:false}},
+              y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+  });
+
+  // Top 10 déficit
+  const deficit=PVC.produtos.filter(p=>p.gap>0).slice(0,10).reverse();
+  pvMkChart('chart-deficit',{type:'bar',
+    data:{labels:deficit.map(p=>p.produto),
+      datasets:[{label:'Gap (vendido-recebido)',data:deficit.map(p=>p.gap),
+        backgroundColor:'rgba(220,38,38,.7)',borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{callback:v=>v.toLocaleString('pt-BR')}},y:{ticks:{font:{size:11}}}}}
+  });
+
+  // Top 10 excesso
+  const excesso=PVC.produtos.filter(p=>p.gap<0).slice(-10).reverse();
+  pvMkChart('chart-excesso',{type:'bar',
+    data:{labels:excesso.map(p=>p.produto),
+      datasets:[{label:'Excesso (recebido-vendido)',data:excesso.map(p=>Math.abs(p.gap)),
+        backgroundColor:'rgba(3,105,161,.65)',borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{callback:v=>v.toLocaleString('pt-BR')}},y:{ticks:{font:{size:11}}}}}
+  });
+
+  // Vendido vs recebido — top gargalos
+  const top15=PVC.produtos.filter(p=>p.gap>0).slice(0,15);
+  pvMkChart('chart-vend-rec',{type:'bar',
+    data:{labels:top15.map(p=>p.produto),
+      datasets:[
+        {label:'Vendido',data:top15.map(p=>p.vendido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
+        {label:'Recebido',data:top15.map(p=>p.recebido),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3}
+      ]},
+    options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toLocaleString('pt-BR')}`}}},
+      scales:{x:{ticks:{font:{size:10},maxRotation:45},grid:{display:false}},
+              y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+  });
+
+  // Mapa completo
+  const tbody=pvEl('tbody-mapa'); tbody.innerHTML='';
+  const maxGap=Math.max(...PVC.produtos.map(p=>Math.abs(p.gap)),1);
+  for(const p of PVC.produtos){
+    const pct=Math.abs(p.gap)/maxGap*100;
+    const cor=p.gap>0?'#dc2626':'#0369a1';
+    const barra=`<div style="height:6px;background:#f3f4f6;border-radius:3px;width:100px">
+      <div style="height:6px;width:${pct}%;background:${cor};border-radius:3px"></div></div>`;
+    tbody.innerHTML+=`<tr>
+      <td><strong>${p.produto}</strong></td>
+      <td class="num">${pvFmt(p.vendido)}</td>
+      <td class="num">${pvFmt(p.recebido)}</td>
+      <td class="num" style="color:${cor};font-weight:700">${p.gap>0?'+':''}${pvFmt(p.gap)}</td>
+      <td>${barra}</td>
+      <td class="num" style="color:${p.travado>0?'#dc2626':'var(--txt-s)'}">${pvFmt(p.travado)}</td>
+    </tr>`;
   }
 }
 
-function pvRenderVol(){
-  const mod=PV.volMod,tab=PV.volTab,per=PV.volP;
-  const pv3=PV.data.pv3,rec=PV.data.rec;
-  const fp=mod!=='TODOS'?pv3.filter(r=>r.modelo===mod):pv3;
-  const fr=mod!=='TODOS'?rec.filter(r=>r.modeloNorm===mod||PV_MAP[r.peca]===mod):rec;
-  const dp=pvAgrupar(fp,fr,per);
-  if(PV.charts.vol)PV.charts.vol.destroy();
-  PV.charts.vol=pvChart('chart-vol',[
-    {type:'bar',label:'Recebido',data:dp.map(d=>d.recebido),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
-    {type:'bar',label:'Expedido',data:dp.map(d=>d.expedido),backgroundColor:'rgba(91,33,182,.75)',borderRadius:3},
-    {type:'line',label:'Gap Rec−Exp',data:dp.map(d=>d.gap_re),borderColor:'#f59e0b',backgroundColor:'transparent',borderWidth:2,pointRadius:3,tension:.3}
-  ],dp.map(d=>d.periodo));
-  const dados=tab==='modelo'?PVC.vm:tab==='mc'?PVC.vmc:PVC.vmct;
-  const fd=mod!=='TODOS'?dados.filter(r=>r.modelo===mod):dados;
-  const cols=tab==='modelo'?['Modelo','Vendido','Expedido','Recebido','Saldo']:tab==='mc'?['Modelo','Cor','Vendido','Expedido','Recebido','Saldo']:['Modelo','Cor','Tam','Vendido','Expedido','Recebido','Saldo'];
-  pvEl('thead-vol').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
-  const tbody=pvEl('tbody-vol'); tbody.innerHTML='';
-  for(const r of fd.slice(0,100)){
-    const sc=r.saldo>=0?'#16a34a':'#dc2626',sv=`<span style="color:${sc};font-weight:700">${r.saldo>=0?'+':''}${r.saldo.toLocaleString()}</span>`;
-    if(tab==='modelo') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td>${r.recebido.toLocaleString()}</td><td>${sv}</td></tr>`;
-    else if(tab==='mc') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td>${r.recebido.toLocaleString()}</td><td>${sv}</td></tr>`;
-    else tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.tam}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td>${r.recebido.toLocaleString()}</td><td>${sv}</td></tr>`;
+// ── ABA 3: ALOCAÇÃO ──
+function pvRenderAlocacao(){
+  const deficit=PVC.produtos.filter(p=>p.gap>0);
+  const excesso=PVC.produtos.filter(p=>p.gap<0);
+  const totDef=deficit.reduce((s,p)=>s+p.gap,0);
+  const totExc=Math.abs(excesso.reduce((s,p)=>s+p.gap,0));
+
+  pvEl('a-deficit-total').textContent=pvFmt(totDef);
+  pvEl('a-excesso-total').textContent=pvFmt(totExc);
+  pvEl('a-n-deficit').textContent=deficit.length;
+  pvEl('a-n-excesso').textContent=excesso.length;
+
+  pvEl('insight-alocacao').innerHTML=
+    `O excesso agregado (<strong>${pvFmt(totExc)} peças</strong>) é ${(totExc/totDef).toFixed(1)}x maior que o déficit total (<strong>${pvFmt(totDef)} peças</strong>). 
+    À primeira vista pareceria possível realocar — mas linhas de produção são especializadas por tipo de peça e dependem de disponibilidade de matéria-prima.`;
+  pvEl('insight-alocacao').className='ins y';
+
+  // Checagem por cor — top 10 excessos
+  const topExc=PVC.por_cor.filter(c=>c.gap<0).slice(-15).reverse();
+  pvMkChart('chart-cor',{type:'bar',
+    data:{labels:topExc.map(c=>`${c.produto} ${c.cor}`),
+      datasets:[
+        {label:'Vendido',data:topExc.map(c=>c.vendido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
+        {label:'Recebido',data:topExc.map(c=>c.recebido),backgroundColor:'rgba(3,105,161,.65)',borderRadius:3}
+      ]},
+    options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toLocaleString('pt-BR')}`}}},
+      scales:{x:{ticks:{font:{size:9},maxRotation:60},grid:{display:false}},
+              y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+  });
+
+  // Concentração do excesso — top 5
+  const top5=PVC.produtos.filter(p=>p.gap<0).slice(-5).reverse();
+  const totalExcesso=PVC.produtos.filter(p=>p.gap<0).reduce((s,p)=>s+Math.abs(p.gap),0)||1;
+  pvMkChart('chart-concentracao',{type:'bar',
+    data:{labels:top5.map(p=>p.produto),
+      datasets:[{label:'Excesso',data:top5.map(p=>Math.abs(p.gap)),
+        backgroundColor:'rgba(3,105,161,.65)',borderRadius:3}]},
+    options:{responsive:true,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>`${c.parsed.y.toLocaleString('pt-BR')} peças (${(c.parsed.y/totalExcesso*100).toFixed(1)}% do excesso total)`}}},
+      scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+  });
+
+  pvRenderAlocTabela();
+}
+
+function pvRenderAlocTabela(){
+  const busca=PV.alocBusca.toUpperCase();
+  const dados=PVC.por_cor.filter(c=>!busca||c.produto.includes(busca)||c.cor.includes(busca));
+  const tbody=pvEl('tbody-aloc'); tbody.innerHTML='';
+  for(const c of dados.slice(0,200)){
+    const cor=c.gap>0?'#dc2626':c.gap<0?'#0369a1':'var(--txt-s)';
+    const label=c.gap>500?'DÉFICIT':c.gap<-500?'EXCESSO':'OK';
+    const lCor=c.gap>500?'#dc2626':c.gap<-500?'#0369a1':'#16a34a';
+    tbody.innerHTML+=`<tr>
+      <td>${c.produto}</td><td>${c.cor}</td>
+      <td class="num">${pvFmt(c.vendido)}</td>
+      <td class="num">${pvFmt(c.recebido)}</td>
+      <td class="num" style="color:${cor};font-weight:700">${c.gap>0?'+':''}${pvFmt(c.gap)}</td>
+      <td><span style="background:${lCor}20;color:${lCor};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">${label}</span></td>
+    </tr>`;
   }
 }
 
-function pvRenderVE(){
-  const mod=PV.veMod,tab=PV.veTab,per=PV.veP;
-  const fp=mod!=='TODOS'?PV.data.pv3.filter(r=>r.modelo===mod):PV.data.pv3;
-  const dp=pvAgrupar(fp,[],per);
-  if(PV.charts.ve)PV.charts.ve.destroy();
-  PV.charts.ve=pvChart('chart-ve',[
-    {type:'bar',label:'Vendas',data:dp.map(d=>d.vendido),backgroundColor:'rgba(3,105,161,.7)',borderRadius:3},
-    {type:'bar',label:'Expedido',data:dp.map(d=>d.expedido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
-    {type:'line',label:'Gap Exp−Vend',data:dp.map(d=>d.gap_ve),borderColor:'#dc2626',backgroundColor:'transparent',borderWidth:2,pointRadius:3,tension:.3}
-  ],dp.map(d=>d.periodo));
-  const u=dp.slice(-4);
-  const gm=Math.round(u.reduce((s,d)=>s+d.gap_ve,0)/(u.length||1));
-  const el=pvEl('insight-ve');
-  el.className='ins '+(gm<0?'r':'g');
-  el.innerHTML=gm<0?`<strong>Expedição abaixo das vendas:</strong> diferença média de <strong>${Math.abs(gm).toLocaleString()}</strong> itens/${per}. Passivo cresce.`:`<strong>✓ Expedição acompanhando vendas</strong>.`;
-  const dados=tab==='modelo'?PVC.vm:tab==='mc'?PVC.vmc:PVC.vmct;
-  const fd=mod!=='TODOS'?dados.filter(r=>r.modelo===mod):dados;
-  const cols=tab==='modelo'?['Modelo','Vendido','Expedido','% Exp','Pendente']:tab==='mc'?['Modelo','Cor','Vendido','Expedido','%','Pend']:['Modelo','Cor','Tam','Vendido','Expedido','%','Pend'];
-  pvEl('thead-ve').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
-  const tbody=pvEl('tbody-ve'); tbody.innerHTML='';
-  for(const r of fd.slice(0,100)){
-    const sal=r.vendido-r.expedido,pct=r.vendido>0?(r.expedido/r.vendido*100).toFixed(1):'—';
-    const pc=parseFloat(pct)>=80?'#16a34a':parseFloat(pct)>=50?'#d97706':'#dc2626';
-    const sv=`<span style="color:${sal>0?'#dc2626':'#16a34a'};font-weight:700">${sal>0?'+':''}${sal.toLocaleString()}</span>`;
-    if(tab==='modelo') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td style="color:${pc};font-weight:700">${pct}%</td><td>${sv}</td></tr>`;
-    else if(tab==='mc') tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td style="color:${pc};font-weight:700">${pct}%</td><td>${sv}</td></tr>`;
-    else tbody.innerHTML+=`<tr><td>${r.modelo}</td><td>${r.cor}</td><td>${r.tam}</td><td>${r.vendido.toLocaleString()}</td><td>${r.expedido.toLocaleString()}</td><td style="color:${pc};font-weight:700">${pct}%</td><td>${sv}</td></tr>`;
+// ── ABA 4: STATUS ──
+function pvRenderStatus(){
+  // Glossário
+  const glossEl=pvEl('glossario'); glossEl.innerHTML='';
+  const gloss=[
+    {s:'PEDIDO ENTREGUE',desc:'Pedido embalado e enviado ao cliente.',tipo:'atendido'},
+    {s:'AG. CONFERÊNCIA',desc:'Na fila de separação — aguardando operação.',tipo:'fila'},
+    {s:'AG. CONFIRMAÇÃO DE ENTREGA',desc:'Embalado, aguardando confirmação de entrega.',tipo:'fila'},
+    {s:'AG. EMBARQUE',desc:'Separado, aguardando embarque/coleta.',tipo:'fila'},
+    {s:'AG. PROCESSAMENTO',desc:'Em processamento interno.',tipo:'fila'},
+    {s:'AG. DECISÃO DE ESTOQUE',desc:'Parado por falta de estoque — não sai sem reposição.',tipo:'travado'},
+    {s:'* PEDIDO SUSPENSO *',desc:'Suspenso por decisão comercial/operacional.',tipo:'travado'},
+    {s:'PEDIDO ENTREGUE PARCIAL',desc:'Enviado parcialmente — parte ainda pendente.',tipo:'parcial'},
+    {s:'PEDIDO CANCELADO',desc:'Cancelado pelo cliente ou pela operação.',tipo:'cancelado'},
+  ];
+  const cores={atendido:'#16a34a',fila:'#5b21b6',travado:'#dc2626',parcial:'#d97706',cancelado:'#6b7280'};
+  for(const g of gloss){
+    const info=PV_STATUS_MAP[g.s];
+    const cor=cores[g.tipo]||'#6b7280';
+    glossEl.innerHTML+=`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--roxo-cl);align-items:flex-start">
+      <span style="flex:0 0 220px;background:${cor}18;color:${cor};font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;text-align:center">${info?.label||g.s}</span>
+      <span style="font-size:13px;color:var(--txt-s)">${g.desc}</span>
+    </div>`;
   }
+
+  // Gráficos status
+  const sp=PVC.status_pecas, sped=PVC.status_pedidos;
+  const labels=Object.keys(sp);
+  const coresStatus=labels.map(l=>{
+    const m=Object.values(PV_STATUS_MAP).find(v=>v.label===l);
+    return m?m.cor:'#8b93a3';
+  });
+  pvMkChart('chart-status-pecas',{type:'doughnut',
+    data:{labels,datasets:[{data:Object.values(sp),backgroundColor:coresStatus,borderWidth:2}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}}}}
+  });
+  pvMkChart('chart-status-pedidos',{type:'doughnut',
+    data:{labels:Object.keys(sped),datasets:[{data:Object.values(sped),backgroundColor:coresStatus,borderWidth:2}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}}}}
+  });
+
+  // Tabela consequências
+  const tbody=pvEl('tbody-consequencias'); tbody.innerHTML='';
+  for(const p of PVC.produtos.filter(x=>x.travado>0||x.suspenso>0||x.parcial>0).slice(0,30)){
+    tbody.innerHTML+=`<tr>
+      <td><strong>${p.produto}</strong></td>
+      <td class="num" style="color:#dc2626">${pvFmt(p.travado)}</td>
+      <td class="num" style="color:#b91c1c">${pvFmt(p.suspenso)}</td>
+      <td class="num" style="color:#d97706">${pvFmt(p.parcial)}</td>
+      <td class="num" style="font-weight:700">${pvFmt(p.travado+p.suspenso+p.parcial)}</td>
+    </tr>`;
+  }
+
+  // Peças por pedido por mês
+  const meses=PVC.pecas_por_pedido_mes;
+  pvMkChart('chart-pecas-mes',{type:'bar',
+    data:{labels:meses.map(m=>m.mes),
+      datasets:[{label:'Média peças/pedido',data:meses.map(m=>m.media),
+        backgroundColor:'rgba(91,33,182,.7)',borderRadius:3}]},
+    options:{responsive:true,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false}},y:{min:0,ticks:{callback:v=>v.toFixed(1)}}}}
+  });
+
+  // Tamanho do pedido vs tempo e trava
+  pvMkChart('chart-tam-pedido',{type:'bar',
+    data:{labels:PVC.tam_pedido.map(t=>t.tam+' peça'+(t.tam==='1'?'':'s')),
+      datasets:[
+        {label:'Prazo médio (dias)',data:PVC.tam_pedido.map(t=>t.media_dias),
+          backgroundColor:'rgba(91,33,182,.7)',borderRadius:3,yAxisID:'y'},
+        {label:'% travados',data:PVC.tam_pedido.map(t=>t.pct_travado),
+          type:'line',borderColor:'#dc2626',backgroundColor:'transparent',
+          borderWidth:2,pointRadius:4,yAxisID:'y2'}
+      ]},
+    options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}}},
+      scales:{
+        x:{grid:{display:false}},
+        y:{ticks:{callback:v=>v+'d'},grid:{display:false}},
+        y2:{position:'right',ticks:{callback:v=>v+'%'},grid:{display:false}}
+      }}
+  });
 }
 
-function pvPopMod(){
-  for(const id of['vol-mod','ve-mod']){
-    const sel=pvEl(id); sel.innerHTML='<option value="TODOS">Todos os modelos</option>';
-    PVC.modelos.forEach(m=>sel.innerHTML+=`<option value="${m}">${m}</option>`);
+// ── ABA 5: FILA ──
+function pvRenderFila(){
+  const f=PVC.fila;
+  pvEl('f-mediana').textContent=f.mediana+'d';
+  pvEl('f-parados').textContent=pvFmt(f.parados);
+  pvEl('f-parados-pct').textContent=`${f.pct_parados}% de ${pvFmt(f.pedidosTotal)} pedidos`;
+  pvEl('f-criticos').textContent=pvFmt(f.criticos);
+  pvEl('f-saida-dia').textContent=(PVC.saldo_dia>0?'+':'')+pvFmt(PVC.saldo_dia)+'/dia';
+  pvEl('f-saida-sub').textContent=`${pvFmt(PVC.media_saidas)} saem vs ${pvFmt(PVC.media_entradas)} entram/dia`;
+
+  const diasZerar=PVC.saldo_dia>0?Math.round(f.parados/PVC.saldo_dia):null;
+  pvEl('insight-fila').innerHTML=diasZerar
+    ?`Saindo <strong>${pvFmt(PVC.saldo_dia)} pedidos/dia</strong> a mais do que entram. Nesse ritmo, a fila de <strong>${pvFmt(f.parados)} pedidos parados</strong> levaria ~<strong>${diasZerar} dias</strong> para zerar.`
+    :`A fila não está encolhendo — entradas (${pvFmt(PVC.media_entradas)}/dia) ≥ saídas (${pvFmt(PVC.media_saidas)}/dia).`;
+  pvEl('insight-fila').className='ins '+(PVC.saldo_dia>0?'y':'r');
+
+  // Distribuição tempo embalagem
+  pvMkChart('chart-dist-tempo',{type:'bar',
+    data:{labels:PVC.dist_tempo.map(d=>d.faixa+' dias'),
+      datasets:[{label:'Pedidos embalados',data:PVC.dist_tempo.map(d=>d.n),
+        backgroundColor:PVC.dist_tempo.map(d=>
+          d.faixa==='0-7'?'rgba(22,163,74,.75)':d.faixa==='8-14'?'rgba(22,163,74,.5)':
+          d.faixa==='15-21'?'rgba(217,119,6,.7)':d.faixa==='22-28'?'rgba(220,38,38,.5)':'rgba(220,38,38,.8)'),
+        borderRadius:3}]},
+    options:{responsive:true,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>`${c.parsed.y.toLocaleString('pt-BR')} pedidos`}}},
+      scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+  });
+
+  // Capacidade por dia da semana
+  pvMkChart('chart-dia-semana',{type:'bar',
+    data:{labels:PVC.por_dia_semana.map(d=>d.dia),
+      datasets:[{label:'Peças expedidas/dia (média)',data:PVC.por_dia_semana.map(d=>d.media),
+        backgroundColor:PVC.por_dia_semana.map((d,i)=>i===0||i===6?'rgba(107,114,128,.4)':'rgba(91,33,182,.7)'),
+        borderRadius:3}]},
+    options:{responsive:true,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+  });
+
+  // Ranking
+  pvEl('titulo-dentro').textContent=`Por dentro de ${PVC.maior_gargalo||'maior gargalo'}`;
+  const tbody=pvEl('tbody-ranking'); tbody.innerHTML='';
+  const maxT=(PVC.ranking[0]?.pedidos_travados||1);
+  for(const r of PVC.ranking.slice(0,15)){
+    const pct=(r.pedidos_travados/f.parados*100).toFixed(1);
+    const bpct=r.pedidos_travados/maxT*100;
+    tbody.innerHTML+=`<tr>
+      <td><strong>${r.produto}</strong></td>
+      <td class="num" style="color:#dc2626;font-weight:700">${pvFmt(r.pedidos_travados)}</td>
+      <td class="num">${pct}%</td>
+      <td><div style="height:6px;background:#f3f4f6;border-radius:3px;width:100px">
+        <div style="height:6px;width:${bpct}%;background:#dc2626;border-radius:3px"></div></div></td>
+    </tr>`;
   }
+
+  // Por dentro do maior gargalo
+  if(PVC.dentro_gargalo?.length){
+    pvMkChart('chart-dentro',{type:'bar',
+      data:{labels:PVC.dentro_gargalo.map(d=>d.label),
+        datasets:[
+          {label:'Vendido',data:PVC.dentro_gargalo.map(d=>d.vendido),backgroundColor:'rgba(91,33,182,.8)',borderRadius:3},
+          {label:'Recebido',data:PVC.dentro_gargalo.map(d=>d.recebido),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3}
+        ]},
+      options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toLocaleString('pt-BR')}`}}},
+        scales:{x:{ticks:{font:{size:9},maxRotation:60},grid:{display:false}},
+                y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
+    });
+  }
+
+  // Com/sem produto problema
+  const tam_labels=['1','2','3','4','5+'];
+  pvMkChart('chart-prob-vs-ok',{type:'bar',
+    data:{
+      labels:tam_labels.map(t=>t+' peça'+(t==='1'?'':'s')),
+      datasets:[
+        {label:'% parados (com produto-problema)',
+          data:tam_labels.map(t=>{const g=PVC.com_prob[t];return g?.total?+(g.parados/g.total*100).toFixed(1):0;}),
+          backgroundColor:'rgba(220,38,38,.75)',borderRadius:3},
+        {label:'% parados (sem produto-problema)',
+          data:tam_labels.map(t=>{const g=PVC.sem_prob[t];return g?.total?+(g.parados/g.total*100).toFixed(1):0;}),
+          backgroundColor:'rgba(91,33,182,.6)',borderRadius:3}
+      ]},
+    options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:c=>`${c.parsed.y.toFixed(1)}% parados`}}},
+      scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>v+'%'},max:100}}}
+  });
+
+  // Diagnóstico
+  pvEl('diagnostico').innerHTML=`
+    <div style="font-size:12px;line-height:1.8;color:var(--txt-s)">
+      ${PVC.ranking.slice(0,5).map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--roxo-cl)">
+        <span><strong>${i+1}. ${r.produto}</strong></span>
+        <span style="color:#dc2626;font-weight:700">${pvFmt(r.pedidos_travados)} pedidos</span>
+      </div>`).join('')}
+    </div>`;
+
+  pvEl('indicadores').innerHTML=`
+    <div style="font-size:12px;line-height:1.8;color:var(--txt-s)">
+      ${[
+        ['Fila total de parados',pvFmt(f.parados)+' pedidos'],
+        ['Prazo mediano',f.mediana+' dias'],
+        ['Saldo diário',pvFmt(PVC.saldo_dia)+'/dia'],
+        ['Semanas na meta',PVC.vol_semanal.filter(s=>s.ok).length+'/'+PVC.vol_semanal.length],
+        ['Top produto-gargalo',PVC.maior_gargalo||'—'],
+      ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--roxo-cl)">
+        <span>${l}</span><span style="font-weight:700;color:var(--txt)">${v}</span>
+      </div>`).join('')}
+    </div>`;
 }
 
-// ── Controles ──
-function pvSubTab(id,btn){
-  ['geral','tempo','volume','ve'].forEach(t=>{pvEl('tab-'+t).style.display=t===id?'block':'none';});
-  pvEl('dash').querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  if(id==='volume')pvRenderVol();
-  if(id==='ve')pvRenderVE();
-  if(id==='tempo')pvRenderTempo();
-}
-function pvTriPeriodo(p,btn){PV.triP=p;pvEl('dash').querySelectorAll('.pv-tri-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderTri();}
-function pvVolP(p,btn){PV.volP=p;pvEl('dash').querySelectorAll('.pv-vp').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVol();}
-function pvVolTab(t,btn){PV.volTab=t;pvEl('dash').querySelectorAll('.pv-vt').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVol();}
-function pvVolMod(){PV.volMod=pvEl('vol-mod').value;pvRenderVol();}
-function pvVEP(p,btn){PV.veP=p;pvEl('dash').querySelectorAll('.pv-vep').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVE();}
-function pvVETab(t,btn){PV.veTab=t;pvEl('dash').querySelectorAll('.pv-vet').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderVE();}
-function pvVEMod(){PV.veMod=pvEl('ve-mod').value;pvRenderVE();}
-function pvTCat(c,btn){PV.tCat=c;pvEl('dash').querySelectorAll('.pv-tcat').forEach(b=>b.classList.remove('active'));btn.classList.add('active');pvRenderTempo();}
-function pvTBusca(v){PV.tBusca=v;pvRenderTempo();}
 </script>
 
 </body>
