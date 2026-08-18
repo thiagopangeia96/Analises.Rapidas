@@ -730,7 +730,48 @@ tr:hover td{background:#faf9ff}
     <div class="upload-filename" id="calc-contagem-filename"></div>
   </div>
 
+  <div class="upload-box" id="calc-bloq-dropzone-top">
+    <label class="upload-label" for="calc-bloq-file-top">📦 4. Estoque ESTQ01 (.xls/.xlsx)</label>
+    <input type="file" id="calc-bloq-file-top" accept=".xls,.xlsx">
+    <div class="upload-hint">Para análise de itens bloqueadores — Descrição, Cor, Tam, Local, Estoque atual, Empenho atual</div>
+    <div class="upload-filename" id="calc-bloq-filename-top"></div>
+  </div>
+
   <div id="calc-result" style="display:none"></div>
+
+  <!-- Análise de itens bloqueadores (requer ESTQ01) -->
+  <div id="calc-bloq-section" style="display:none;margin-top:20px">
+    <div class="sec">🔒 Itens bloqueadores dos pedidos atendíveis de calça</div>
+
+    <!-- Modo de validação de estoque -->
+    <div style="background:#fff;border:1.5px solid var(--roxo-cl);border-radius:10px;padding:14px 18px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:800;color:var(--roxo);letter-spacing:.05em;margin-bottom:10px">MODO DE VALIDAÇÃO DO ESTOQUE</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="radio" name="calc-bloq-modo" id="calc-bloq-modo-saldo" value="saldo" checked>
+          Por saldo (usa Estoque atual – Empenho atual)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="radio" name="calc-bloq-modo" id="calc-bloq-modo-local" value="local">
+          Por localização (tem local = tem produto; sem local = zerado)
+        </label>
+      </div>
+      <div id="calc-bloq-aviso-local" class="ins y" style="display:none;margin-top:10px">
+        <b>⚠ Atenção:</b> a análise por localização não valida saldo. Um item pode ter local cadastrado mas não ter estoque suficiente para toda a demanda — use essa visão como referência rápida, não como número definitivo.
+      </div>
+    </div>
+
+    <!-- Upload ESTQ01 -->
+    <div class="upload-box" id="calc-bloq-dropzone" style="margin-bottom:14px">
+      <label class="upload-label" for="calc-bloq-file">📦 Relatório de Estoque ESTQ01 (.xls/.xlsx)</label>
+      <input type="file" id="calc-bloq-file" accept=".xls,.xlsx">
+      <div class="upload-hint">Colunas: Descrição, Cor, Tam, Local, Estoque atual, Empenho atual</div>
+      <div class="upload-filename" id="calc-bloq-filename"></div>
+    </div>
+
+    <!-- Resultado bloqueadores -->
+    <div id="calc-bloq-result" style="display:none"></div>
+  </div>
 </div>
 
 <script>
@@ -3118,6 +3159,8 @@ function renderCalcas(resultado, totalLinhasCalca, contadosPorFalta, excluidosPo
 
   el.innerHTML = html;
   renderLinhasCalcas(resultado);
+  // Mostrar seção de bloqueadores se estoque já carregado
+  if (typeof calcBloqHook === 'function') calcBloqHook();
 }
 
 function renderLinhasCalcas(dados){
@@ -3166,6 +3209,411 @@ function exportarCalcasFiltrado(){
     if (file){ document.getElementById(inputId).files = e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
   });
 });
+
+// ══════════════════════════════════════
+// CALÇAS — ANÁLISE DE ITENS BLOQUEADORES
+// ══════════════════════════════════════
+
+let CALC_BLOQ_ESTQ = null;
+
+// Toggle aviso localização
+document.getElementById('calc-bloq-modo-local').addEventListener('change', function(){
+  document.getElementById('calc-bloq-aviso-local').style.display = this.checked ? 'block' : 'none';
+});
+document.getElementById('calc-bloq-modo-saldo').addEventListener('change', function(){
+  document.getElementById('calc-bloq-aviso-local').style.display = 'none';
+});
+
+// Upload ESTQ01
+// Listener para upload do ESTQ01 no topo da aba
+document.getElementById('calc-bloq-file-top').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('calc-bloq-filename-top').textContent = file.name;
+  // Sincronizar com o input de baixo
+  document.getElementById('calc-bloq-filename').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const buf = ev.target.result;
+    let text;
+    try { text = new TextDecoder('utf-8', {fatal:true}).decode(buf); }
+    catch(err) { text = new TextDecoder('windows-1252').decode(buf); }
+    CALC_BLOQ_ESTQ = calcBloqParseEstq(text);
+    if (window.CALCAS_SIM_PERIODO) calcBloqAnalisar();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// Drag-drop para o upload do topo
+const calcBloqDropTop = document.getElementById('calc-bloq-dropzone-top');
+calcBloqDropTop.addEventListener('dragover', e => { e.preventDefault(); calcBloqDropTop.classList.add('drag'); });
+calcBloqDropTop.addEventListener('dragleave', () => calcBloqDropTop.classList.remove('drag'));
+calcBloqDropTop.addEventListener('drop', e => {
+  e.preventDefault(); calcBloqDropTop.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('calc-bloq-file-top').files = e.dataTransfer.files;
+    document.getElementById('calc-bloq-file-top').dispatchEvent(new Event('change'));
+  }
+});
+
+document.getElementById('calc-bloq-file').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('calc-bloq-filename').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const buf = ev.target.result;
+    let text;
+    try { text = new TextDecoder('utf-8', {fatal:true}).decode(buf); }
+    catch(err) { text = new TextDecoder('windows-1252').decode(buf); }
+    CALC_BLOQ_ESTQ = calcBloqParseEstq(text);
+    // Se análise de calças já foi feita, rodar bloqueadores automaticamente
+    if (window.CALCAS_SIM_PERIODO) calcBloqAnalisar();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// Drag-drop
+const calcBloqDrop = document.getElementById('calc-bloq-dropzone');
+calcBloqDrop.addEventListener('dragover', e => { e.preventDefault(); calcBloqDrop.classList.add('drag'); });
+calcBloqDrop.addEventListener('dragleave', () => calcBloqDrop.classList.remove('drag'));
+calcBloqDrop.addEventListener('drop', e => {
+  e.preventDefault(); calcBloqDrop.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('calc-bloq-file').files = e.dataTransfer.files;
+    document.getElementById('calc-bloq-file').dispatchEvent(new Event('change'));
+  }
+});
+
+function calcBloqHook() {
+  document.getElementById('calc-bloq-section').style.display = 'block';
+  if (CALC_BLOQ_ESTQ) calcBloqAnalisar();
+}
+
+function calcBloqParseEstq(text) {
+  // Colunas: 0=FILIAL 1=Nome 2=Código 3=Descrição 4=Cor 5=Tam 6=Local 7=Estoque atual 8=Empenho atual
+  const cellRe = /<Cell[^>]*>(?:<Data[^>]*>([\s\S]*?)<\/Data>)?<\/Cell>/g;
+  const rows = text.split('</Row>');
+  const estoque = {};
+  let first = true;
+  for (const row of rows) {
+    if (row.indexOf('<Row>') === -1 && row.indexOf('<Row ') === -1) continue;
+    const vals = []; let cm; cellRe.lastIndex = 0;
+    while ((cm = cellRe.exec(row)) !== null) vals.push(cm[1] || '');
+    if (first) { first = false; continue; }
+    if (vals.length < 8) continue;
+    const desc  = vals[3].trim();
+    if (!desc) continue;
+    const corRaw = vals[4].trim();
+    const cor   = corRaw.includes(' - ') ? corRaw.split(' - ').slice(1).join(' - ').trim().toUpperCase() : corRaw.toUpperCase().trim();
+    const tam   = vals[5].trim().toUpperCase();
+    const local = vals[6].trim();
+    const estAtual   = parseFloat(vals[7]) || 0;
+    const empenho    = parseFloat(vals[8]) || 0;
+    const saldoLiq   = estAtual - empenho;
+    const chave = desc.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim().replace(/\s+/g,' ')
+                + '|' + cor + '|' + tam;
+    if (!estoque[chave]) estoque[chave] = {desc, cor, tam, local:'', saldo:0, temLocal:false};
+    estoque[chave].saldo += saldoLiq;
+    if (local) estoque[chave].temLocal = true;
+  }
+  return estoque;
+}
+
+function calcBloqNorm(s) {
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim().replace(/\s+/g,' ');
+}
+
+function calcBloqNormProd(nomeCsv, estqMap) {
+  // Usa expNormProduto (que já tem EXP_CADASTRO_NOMES com acentos/cedilha corretos)
+  // para retornar o nome no padrão do cadastro sistemico
+  if (typeof expNormProduto === 'function') {
+    const nomeNorm = expNormProduto(nomeCsv);
+    return nomeNorm;
+  }
+  // Fallback se expNormProduto não disponível
+  const chave = calcBloqNorm(nomeCsv);
+  const palavras = chave.split(' ');
+  if (palavras.length >= 2) {
+    const tipo = palavras[0];
+    for (let i = palavras.length - 1; i > 0; i--) {
+      const tentativa = tipo + ' ' + palavras[i];
+      if (Object.keys(estqMap).some(k => k.startsWith(calcBloqNorm(tentativa) + '|'))) return tentativa;
+    }
+  }
+  return chave;
+}
+
+function calcBloqAnalisar() {
+  if (!CALC_BLOQ_ESTQ || !window.CALCAS_SIM_PERIODO || !CALC_VENDAS) return;
+  const modoLocal = document.getElementById('calc-bloq-modo-local').checked;
+  const ESTQ = CALC_BLOQ_ESTQ;
+
+  // Montar mapa pedido → tipo (ANTIGO/NOVO)
+  const mapaTipo = {};
+  (window.CALCAS_SIM_PERIODO.detalhe || []).forEach(d => {
+    mapaTipo[String(d.pedido)] = { tipo: 'ANTIGO', data: d.data, statusCalca: d.status };
+  });
+  (window.CALCAS_SIM_NOVOS?.detalhe || []).forEach(d => {
+    mapaTipo[String(d.pedido)] = { tipo: 'NOVO', data: d.data, statusCalca: d.status };
+  });
+
+  // Atendíveis de calça (período + novos)
+  const atendiveisPeriodo = (window.CALCAS_SIM_PERIODO.detalhe || [])
+    .filter(d => d.status === 'ATENDÍVEL').map(d => String(d.pedido));
+  const atendiveisNovos = (window.CALCAS_SIM_NOVOS?.detalhe || [])
+    .filter(d => d.status === 'ATENDÍVEL').map(d => String(d.pedido));
+  const atendiveis = [...atendiveisPeriodo, ...atendiveisNovos];
+
+  if (!atendiveis.length) {
+    document.getElementById('calc-bloq-result').style.display = 'block';
+    document.getElementById('calc-bloq-result').innerHTML =
+      '<div class="ins y">Nenhum pedido atendível de calça encontrado. Rode a análise de calças primeiro.</div>';
+    return;
+  }
+
+  // Brindes não entram na verificação de estoque
+  const BRINDES_BLOQ = ['PNG','ADESIVO','BLOQUINHO','LOOK SURPRESA','DREAM BOX',
+    'OCULOS','ÓCULOS','COPO','CARD','PRESENTE','CHAVEIRO','SURPRISE','INFLU','BRINDE'];
+  function ehBrindeBloq(n){ return BRINDES_BLOQ.some(b => n.toUpperCase().includes(b)); }
+  function ehCalcaBloq(n){ return /calca|calça/i.test(calcBloqNorm(n)); }
+
+  // Montar mapa pedido → itens não-calça e não-brinde
+  // Calças já foram validadas pela simulação FIFO com a contagem física — não re-verificar no ESTQ01
+  const itensPorPedido = {};
+  CALC_VENDAS.forEach(row => {
+    const nome = row['Nome do Produto'] || '';
+    if (ehCalcaBloq(nome) || ehBrindeBloq(nome)) return;
+    const numPedido = String(parseInt(row['Número do Pedido']) || '');
+    if (!numPedido || !atendiveis.includes(numPedido)) return;
+    const prodBase = nome.replace(/\s*\(.*/, '').trim();
+    const varMatch = nome.match(/\(([^,]+),\s*([^)]+)\)\s*$/);
+    const cor  = varMatch ? varMatch[1].trim().toUpperCase() : '';
+    const tam  = varMatch ? varMatch[2].trim().toUpperCase() : '';
+    const qtde = parseFloat(row['Quantidade Comprada'] || 1) || 1;
+    if (!itensPorPedido[numPedido]) itensPorPedido[numPedido] = [];
+    itensPorPedido[numPedido].push({ produto: prodBase, cor, tam, qtde });
+  });
+
+  function temEstoque(produto, cor, tam) {
+    const nomeCadastro = calcBloqNormProd(produto, ESTQ);
+    const chaveEstq = calcBloqNorm(nomeCadastro) + '|' + cor + '|' + tam;
+    const entry = ESTQ[chaveEstq];
+    if (!entry) return false;
+    return modoLocal ? entry.temLocal : entry.saldo > 0;
+  }
+
+  // Classificar separado por ANTIGO e NOVO
+  let podePeriodo = [], travaPeriodo = [];
+  let podeNovos   = [], travaNovos   = [];
+  const motivosTravamento = {};
+
+  for (const ped of atendiveis) {
+    const tipo = mapaTipo[ped]?.tipo || 'ANTIGO';
+    const outros = itensPorPedido[ped] || [];
+    const semEstoque = outros
+      .filter(it => !temEstoque(it.produto, it.cor, it.tam))
+      .map(it => ({ ...it, produto: calcBloqNormProd(it.produto, ESTQ) }));
+
+    const obj = { pedido: ped, faltantes: semEstoque, tipo, data: mapaTipo[ped]?.data };
+
+    if (semEstoque.length === 0) {
+      tipo === 'ANTIGO' ? podePeriodo.push(ped) : podeNovos.push(ped);
+    } else {
+      tipo === 'ANTIGO' ? travaPeriodo.push(obj) : travaNovos.push(obj);
+      semEstoque.forEach(it => {
+        const k = `${it.produto}|${it.cor}|${it.tam}`;
+        if (!motivosTravamento[k]) motivosTravamento[k] = {
+          produto: it.produto, cor: it.cor, tam: it.tam,
+          antigos: 0, novos: 0, qtdeAntigos: 0, qtdeNovos: 0
+        };
+        if (tipo === 'ANTIGO') { motivosTravamento[k].antigos++; motivosTravamento[k].qtdeAntigos += (it.qtde||1); }
+        else                   { motivosTravamento[k].novos++;   motivosTravamento[k].qtdeNovos  += (it.qtde||1); }
+      });
+    }
+  }
+
+  const podeFazer  = [...podePeriodo, ...podeNovos];
+  const travados   = [...travaPeriodo, ...travaNovos];
+  const topMotivos = Object.values(motivosTravamento)
+    .sort((a,b) => (b.antigos+b.novos) - (a.antigos+a.novos)).slice(0, 15);
+  const modoLabel = modoLocal ? 'localização' : 'saldo líquido';
+
+  // ── Render ──
+  let html = `
+    <div class="kgrid" style="margin-bottom:14px">
+      <div class="kpi" style="border-top-color:var(--ok)">
+        <div class="kv" style="color:var(--ok)">${podePeriodo.length} / ${atendiveisPeriodo.length}</div>
+        <div class="kl">Pedidos do período que saem agora</div>
+        <div class="kp">${atendiveisPeriodo.length ? (podePeriodo.length/atendiveisPeriodo.length*100).toFixed(1)+'%' : '—'}</div>
+      </div>
+      <div class="kpi r">
+        <div class="kv">${travaPeriodo.length}</div>
+        <div class="kl">Pedidos do período travados</div>
+        <div class="kp">outros itens sem estoque</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--blue)">
+        <div class="kv" style="color:var(--blue)">${podeNovos.length} / ${atendiveisNovos.length}</div>
+        <div class="kl">Pedidos novos que saem agora</div>
+        <div class="kp">${atendiveisNovos.length ? (podeNovos.length/atendiveisNovos.length*100).toFixed(1)+'%' : '—'}</div>
+      </div>
+      <div class="kpi r">
+        <div class="kv">${travaNovos.length}</div>
+        <div class="kl">Pedidos novos travados</div>
+        <div class="kp">outros itens sem estoque</div>
+      </div>
+    </div>
+    <div class="ins ${travados.length===0?'g':'r'}" style="margin-bottom:14px">
+      ${travados.length===0
+        ? `<b>✅ Todos os ${atendiveis.length} pedidos atendíveis de calça podem ser expedidos agora.</b>`
+        : `<b>⚠ ${podeFazer.length} de ${atendiveis.length} pedidos atendíveis de calça</b> podem sair agora.
+           <b>${travaPeriodo.length} antigos</b> e <b>${travaNovos.length} novos</b> estão travados por outros itens sem estoque (${modoLabel}).`}
+    </div>`;
+
+  if (topMotivos.length) {
+    html += `<div class="sec">Principais itens bloqueadores</div>
+    <div class="table-wrap scroll" style="margin-bottom:14px">
+      <table><thead><tr>
+        <th>Produto</th><th>Cor</th><th>Tam</th>
+        <th class="num">Pedidos antigos</th><th class="num">Peças antigos</th>
+        <th class="num">Pedidos novos</th><th class="num">Peças novos</th>
+        <th class="num">Total peças</th>
+      </tr></thead><tbody>
+      ${topMotivos.map(m => `<tr>
+        <td><strong>${m.produto}</strong></td>
+        <td>${m.cor}</td><td>${m.tam}</td>
+        <td class="num" style="color:#dc2626">${m.antigos}</td>
+        <td class="num" style="color:#dc2626;font-weight:700">${m.qtdeAntigos}</td>
+        <td class="num" style="color:#0369a1">${m.novos}</td>
+        <td class="num" style="color:#0369a1;font-weight:700">${m.qtdeNovos}</td>
+        <td class="num" style="font-weight:700">${m.qtdeAntigos+m.qtdeNovos}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  if (travados.length) {
+    html += `<div class="sec">Pedidos travados — detalhe</div>
+    <div class="table-wrap scroll" style="max-height:320px;overflow-y:auto;margin-bottom:14px">
+      <table><thead><tr>
+        <th>Tipo</th><th>Pedido</th><th>Itens sem estoque</th>
+      </tr></thead><tbody>
+      ${travados.map(t => `<tr>
+        <td><span style="background:${t.tipo==='ANTIGO'?'rgba(91,33,182,.12)':'rgba(3,105,161,.12)'};color:${t.tipo==='ANTIGO'?'var(--roxo)':'var(--blue)'};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">${t.tipo}</span></td>
+        <td><strong>${t.pedido}</strong></td>
+        <td>${t.faltantes.map(f=>`${f.produto} ${f.cor} ${f.tam}`).join(' · ')}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  html += `<div style="margin-top:14px">
+    <button class="btn btn-primary" onclick="calcBloqExportar()" style="font-size:12px">
+      ⬇ Exportar análise completa (.xlsx)
+    </button>
+  </div>`;
+
+  const el = document.getElementById('calc-bloq-result');
+  el.style.display = 'block';
+  el.innerHTML = html;
+
+  window._CALC_BLOQ_DADOS = { atendiveis, podeFazer, podePeriodo, podeNovos,
+    travados, travaPeriodo, travaNovos, topMotivos, modoLocal, mapaTipo };
+}
+
+function calcBloqExportar() {
+  if (!window._CALC_BLOQ_DADOS || !window.CALCAS_SIM_PERIODO) {
+    alert('Rode a análise primeiro.'); return;
+  }
+  const { podeFazer, travados, modoLocal, mapaTipo } = window._CALC_BLOQ_DADOS;
+  const modoLabel = modoLocal ? 'localizacao' : 'saldo';
+
+  function getStatusLinx(pedNum) {
+    if (!window.PV03_POR_PEDIDO) return '—';
+    return window.PV03_POR_PEDIDO['NVS-'+pedNum]?.status || '—';
+  }
+  function fmtData(d) {
+    if (!d) return '—';
+    if (d instanceof Date) return d.toLocaleDateString('pt-BR');
+    try { return new Date(d).toLocaleDateString('pt-BR'); } catch(e) { return String(d); }
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── ABA 1: DETALHE ──
+  const rowsDetalhe = [];
+  // Pode fazer
+  podeFazer.forEach(ped => {
+    const info = mapaTipo[ped] || {};
+    rowsDetalhe.push({
+      'TIPO': info.tipo || '—',
+      'Pedido': ped, 'NVS': 'NVS-'+ped,
+      'Data da venda': fmtData(info.data),
+      'Status (calça)': info.statusCalca || '—',
+      'STATUS LINX': getStatusLinx(ped),
+      'PENDÊNCIA': '—'
+    });
+  });
+  // Travados
+  travados.forEach(t => {
+    const info = mapaTipo[t.pedido] || {};
+    rowsDetalhe.push({
+      'TIPO': t.tipo || info.tipo || '—',
+      'Pedido': t.pedido, 'NVS': 'NVS-'+t.pedido,
+      'Data da venda': fmtData(t.data || info.data),
+      'Status (calça)': info.statusCalca || '—',
+      'STATUS LINX': getStatusLinx(t.pedido),
+      'PENDÊNCIA': t.faltantes.map(f=>`${f.produto} ${f.cor} ${f.tam}`).join(' | ')
+    });
+  });
+  rowsDetalhe.sort((a,b) => {
+    if (a.TIPO !== b.TIPO) return a.TIPO === 'ANTIGO' ? -1 : 1;
+    return String(a.Pedido).localeCompare(String(b.Pedido));
+  });
+  const wsDetalhe = XLSX.utils.json_to_sheet(rowsDetalhe);
+  wsDetalhe['!cols'] = [{wch:8},{wch:10},{wch:14},{wch:14},{wch:20},{wch:22},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, wsDetalhe, 'Detalhe');
+
+  // ── ABA 2: CONSOLIDADO ──
+  const consolidado = {};
+  travados.forEach(t => {
+    const tipo = t.tipo || mapaTipo[t.pedido]?.tipo || 'ANTIGO';
+    t.faltantes.forEach(f => {
+      const chave = `${f.produto}|${f.cor}|${f.tam}`;
+      if (!consolidado[chave]) consolidado[chave] = {
+        produto: f.produto, cor: f.cor, tam: f.tam,
+        antigos: 0, novos: 0, qtdeAntigos: 0, qtdeNovos: 0
+      };
+      if (tipo === 'ANTIGO') { consolidado[chave].antigos++; consolidado[chave].qtdeAntigos += (f.qtde||1); }
+      else                   { consolidado[chave].novos++;   consolidado[chave].qtdeNovos  += (f.qtde||1); }
+    });
+  });
+  const rowsConsol = Object.values(consolidado)
+    .sort((a,b) => (b.qtdeAntigos+b.qtdeNovos) - (a.qtdeAntigos+a.qtdeNovos))
+    .map(c => ({
+      'MODELO': c.produto, 'COR': c.cor, 'TAMANHO': c.tam,
+      'PEDIDOS ANTIGOS': c.antigos,
+      'PEÇAS ANTIGOS': c.qtdeAntigos,
+      'PEDIDOS NOVOS': c.novos,
+      'PEÇAS NOVOS': c.qtdeNovos,
+      'TOTAL PEÇAS': c.qtdeAntigos + c.qtdeNovos
+    }));
+  const wsConsol = XLSX.utils.json_to_sheet(rowsConsol);
+  wsConsol['!cols'] = [{wch:30},{wch:16},{wch:10},{wch:24},{wch:22},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsConsol, 'Consolidado');
+
+  XLSX.writeFile(wb, `calcas_bloqueadores_${modoLabel}.xlsx`);
+}
+
+// Re-rodar análise quando modo muda
+['calc-bloq-modo-saldo','calc-bloq-modo-local'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    if (CALC_BLOQ_ESTQ && window.CALCAS_SIM_PERIODO) calcBloqAnalisar();
+  });
+});
+
 </script>
 
 <!-- ===================== ABA · ANÁLISE ATENDÍVEIS ===================== -->
