@@ -153,6 +153,7 @@ tr:hover td{background:#faf9ff}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 </head>
 <body>
@@ -749,7 +750,7 @@ tr:hover td{background:#faf9ff}
       <div style="display:flex;gap:24px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
           <input type="radio" name="calc-bloq-modo" id="calc-bloq-modo-saldo" value="saldo" checked>
-          Por saldo (usa Estoque atual – Empenho atual)
+          Por saldo (usa Estoque atual)
         </label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
           <input type="radio" name="calc-bloq-modo" id="calc-bloq-modo-local" value="local">
@@ -3636,7 +3637,7 @@ function calcBloqExportar() {
     <div class="card-title">Modo de validação do estoque</div>
     <div style="display:flex;gap:16px;font-size:12.5px">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700">
-        <input type="radio" name="at-modo" id="at-modo-saldo" value="saldo" checked> Por saldo (usa Estoque atual − Necessidade)
+        <input type="radio" name="at-modo" id="at-modo-saldo" value="saldo" checked> Por saldo (usa Estoque atual)
       </label>
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700">
         <input type="radio" name="at-modo" id="at-modo-local" value="local"> Por localização (tem local = tem produto; sem local = zerado)
@@ -3728,6 +3729,7 @@ document.getElementById('at-estq-file').addEventListener('change', function(e){
     const wb = XLSX.read(buf, {type:'array'});
     const ws = wb.Sheets[wb.SheetNames[0]];
     AT_ESTQ = XLSX.utils.sheet_to_json(ws, {defval:null});
+    window.AT_ESTQ_GLOBAL = AT_ESTQ; // expor globalmente para Pedidos Urgentes
     document.getElementById('at-estq-fn').textContent = '✓ '+file.name+' ('+AT_ESTQ.length+' linhas)';
     tentarProcessarAt();
   };
@@ -4131,6 +4133,7 @@ function renderAtendiveis(resultado, modo, exclStatus, semPv03, exclData, exclBr
   html += '<div class="btn-row" style="margin-top:10px">'+
     '<button class="btn btn-primary" onclick="exportarAtendiveisList()">⬇ Exportar Atendíveis (Express primeiro → mais antigos)</button>'+
     '<button class="btn btn-secondary" onclick="mostrarAnalisePedidosAfetados()">🔍 Análise dos Pedidos Afetados</button>'+
+    '<button class="btn btn-secondary" style="background:#b23b00;color:#fff;border:none" onclick="abrirPedidosUrgentes()">🚨 Pedidos Urgentes</button>'+
   '</div>';
 
   // Restrições por tipo: checkboxes para excluir tipos que não podem ser atendidos
@@ -4471,6 +4474,525 @@ function exportarAt(modo){
     if(file){ document.getElementById(inputId).files=e.dataTransfer.files; document.getElementById(inputId).dispatchEvent(new Event('change')); }
   });
 });
+
+// ══════════════════════════════════════════════════════
+// PEDIDOS URGENTES — CRM / Reclame Aqui
+// ══════════════════════════════════════════════════════
+
+// Mapas de localização para geração do PDF (reutiliza estrutura do Analista Faturador)
+let URG_LOC = new Map();    // skuKey -> local
+let URG_ESTK = new Map();   // skuKey -> saldo
+let URG_DE2CD = new Map();  // desc -> código
+let URG_LOCC = new Map();   // cod|tam|cor -> local
+let URG_RESULT = null;
+
+function urgSkuKey(de, t, c) { return (de||'')+'|'+(t||'')+'|'+(c||''); }
+function urgLocOf(de, t, c) {
+  let v = URG_LOC.get(urgSkuKey(de, t, c));
+  if (v === undefined) { const cd = URG_DE2CD.get(de); if (cd) v = URG_LOCC.get(cd+'|'+((t||'').trim())+'|'+c); }
+  if (v === undefined) return null;
+  const s = (v||'').trim(); return s === '' ? null : v;
+}
+function urgIsEnvSem(loc) { const s = (loc||'').trim().toUpperCase(); return s==='ENVIAR SEM'||s==='SEM'; }
+function urgLocTag(de, t, c) {
+  const l = urgLocOf(de, t, c);
+  if (l === null) return {loc:null, sem:true, env:false};
+  if (urgIsEnvSem(l)) return {loc:l, sem:false, env:true};
+  return {loc:l, sem:false, env:false};
+}
+
+// Popula URG_LOC a partir do ESTQ01 já carregado (AT_ESTQ ou CALC_BLOQ_ESTQ)
+function urgPopularLoc() {
+  URG_LOC.clear(); URG_ESTK.clear(); URG_DE2CD.clear(); URG_LOCC.clear();
+  // Tentar usar o ESTQ01 da aba Atendíveis (AT_ESTQ = array de rows)
+  const estqSource = window.AT_ESTQ_GLOBAL || window.AT_ESTQ || null;
+  if (!estqSource || !estqSource.length) return false;
+  estqSource.forEach(r => {
+    const desc = (r['Descrição'] || r['DESCRIÇÃO'] || '').trim();
+    if (!desc) return;
+    const corRaw = (r['Cor'] || r['COR'] || '').trim();
+    const cor = corRaw.includes(' - ') ? corRaw.split(' - ').slice(1).join(' - ').trim().toUpperCase() : corRaw.toUpperCase().trim();
+    const tam = (r['Tam'] || r['TAM'] || '').trim().toUpperCase();
+    const loc = (r['Local'] || r['LOCAL'] || '').trim();
+    const cod = (r['Código'] || r['CÓDIGO'] || '').trim();
+    const est = parseFloat(r['Estoque atual'] || r['ESTOQUE ATUAL'] || 0) || 0;
+    const saldo = est; // usa estoque atual sem descontar empenho
+    const chave = urgSkuKey(desc, tam, cor);
+    URG_LOC.set(chave, loc);
+    URG_ESTK.set(chave, (URG_ESTK.get(chave) || 0) + saldo);
+    if (cod) { URG_DE2CD.set(desc, cod); URG_LOCC.set(cod+'|'+tam+'|'+cor, loc); }
+  });
+  return URG_LOC.size > 0;
+}
+
+// Normalizar nome do produto para o padrão do cadastro
+function urgNormProd(nome) {
+  if (typeof expNormProduto === 'function') return expNormProduto(nome);
+  return (nome||'').trim().toUpperCase();
+}
+
+function abrirPedidosUrgentes() {
+  // Verificar se dados necessários estão carregados
+  if (!AT_VENDAS || !AT_VENDAS.length) { alert('Carregue o arquivo de Vendas na aba primeiro.'); return; }
+  if (!window.PV03_POR_PEDIDO && (!AT_PV03 || !AT_PV03.length)) { alert('Carregue o PV03 na aba primeiro.'); return; }
+
+  // Tentar popular localização
+  const temLoc = urgPopularLoc();
+
+  // Criar/abrir modal
+  let modal = document.getElementById('modal-urgentes');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-urgentes';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:780px;width:95%">
+        <div class="modal-head">
+          🚨 Pedidos Urgentes — CRM / Reclame Aqui
+          <span onclick="document.getElementById('modal-urgentes').style.display='none'"
+            style="cursor:pointer;float:right;font-size:18px;line-height:1">✕</span>
+        </div>
+
+        <!-- Modo de verificação -->
+        <div style="background:#faf9ff;border:1px solid var(--roxo-cl);border-radius:8px;padding:12px 16px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:800;color:var(--roxo);letter-spacing:.05em;margin-bottom:8px">MODO DE VERIFICAÇÃO DO ESTOQUE</div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="radio" name="urg-modo" id="urg-modo-local" value="local" checked>
+              Por localização (tem local = tem produto)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="radio" name="urg-modo" id="urg-modo-saldo" value="saldo">
+              Por saldo (usa Estoque atual)
+            </label>
+          </div>
+    
+        </div>
+
+        <!-- Área de input dos pedidos -->
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--txt)">
+          Cole os números dos pedidos (um por linha, sem NVS-, sem vírgula):
+        </div>
+        <textarea id="urg-input" placeholder="547022&#10;575800&#10;576280&#10;555693&#10;..."
+          style="width:100%;height:130px;padding:10px;border:1.5px solid var(--roxo-cl);border-radius:8px;
+                 font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
+
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="urgAnalisar()" style="font-size:13px">🔍 Analisar pedidos</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('urg-input').value=''" style="font-size:12px">Limpar</button>
+        </div>
+
+        <div id="urg-result" style="margin-top:16px"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    // Fechar clicando fora
+    modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+  }
+  modal.style.display = 'flex';
+}
+
+function urgAnalisar() {
+  const input = document.getElementById('urg-input').value;
+  const nums = [...new Set(
+    input.split(/[\n,;\s]+/)
+      .map(s => s.trim().replace(/^NVS-/i,''))
+      .filter(s => /^\d+$/.test(s))
+  )];
+
+  if (!nums.length) { alert('Nenhum número de pedido válido encontrado.'); return; }
+
+  const modoLocal = document.getElementById('urg-modo-local').checked;
+  const temLoc = URG_LOC.size > 0;
+
+  // Bloquear se ESTQ01 não carregado — sem ele não tem como verificar estoque
+  if (!temLoc) {
+    alert('⚠ Carregue o ESTQ01 antes de analisar.\n\nSem o arquivo de estoque não é possível verificar quais itens têm disponibilidade — o resultado seria incorreto.');
+    return;
+  }
+
+  // Mapas de suporte
+  const STATUS_PENDENTE_NORM = new Set(['AG. CONFERENCIA','AG. PRE NOTA','AG. PROCESSAMENTO','AG. DECISAO DE ESTOQUE']);
+  function normSt(s) {
+    return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+  }
+
+  // Mapa pedido -> dados do CSV de Vendas
+  const pedMap = {};
+  AT_VENDAS.forEach(row => {
+    const num = String(row['Número do Pedido']||'').trim();
+    if (!num || !nums.includes(num)) return;
+    if (!pedMap[num]) pedMap[num] = { num, data:'', express:false, cliente:'', itens:[] };
+    const dt = (row['Data']||'').trim().slice(0,10);
+    if (dt && !pedMap[num].data) pedMap[num].data = dt;
+    const fe = (row['Forma de Entrega']||'').toUpperCase();
+    if (fe.includes('EXPRESS')) pedMap[num].express = true;
+    const nome = row['Nome do Produto'] || '';
+    const varMatch = nome.match(/\(([^,]+),\s*([^)]+)\)\s*$/);
+    const cor = varMatch ? varMatch[1].trim().toUpperCase() : '';
+    const tam = varMatch ? varMatch[2].trim().toUpperCase() : '';
+    const prodBase = nome.replace(/\s*\(.*/, '').trim();
+    const prodNorm = urgNormProd(prodBase);
+    const qtde = parseFloat(row['Quantidade Comprada']||1) || 1;
+    const brindes = ['PNG','ADESIVO','BLOQUINHO','DREAM BOX','LOOK SURPRESA','BRINDE'];
+    const ehBri = brindes.some(b => prodNorm.toUpperCase().includes(b));
+    pedMap[num].itens.push({ produto: prodNorm, cor, tam, qtde, brinde: ehBri });
+  });
+
+  // Status PV03
+  const pvMap = window.PV03_POR_PEDIDO || {};
+  const pvMapAt = {};
+  if (AT_PV03 && AT_PV03.length) {
+    AT_PV03.forEach(r => {
+      const ped = String(r['Pedidovenda']||'').replace('NVS-','');
+      if (!pvMapAt[ped]) pvMapAt[ped] = { status: r['Status']||'', dataConf: r['Data conferido']||'' };
+    });
+  }
+  function getPV(num) {
+    const pv = pvMap['NVS-'+num];
+    if (pv) return { status: pv.status||'', dataConf: pv.dataConf||'' };
+    return pvMapAt[num] || null;
+  }
+
+  // Verificar estoque de um item
+  function temEstoqueUrg(prod, cor, tam) {
+    const locInfo = urgLocTag(prod, tam, cor);
+    if (modoLocal) return locInfo.loc && !locInfo.sem;
+    const saldo = URG_ESTK.get(urgSkuKey(prod, tam, cor)) || 0;
+    return saldo > 0;
+  }
+
+  // Classificar cada pedido
+  const atendiveis = [], naoAtendiveis = [], naoEncontrados = [];
+
+  nums.forEach(num => {
+    const ped = pedMap[num];
+    if (!ped) { naoEncontrados.push(num); return; }
+
+    const pv = getPV(num);
+    const statusNorm = normSt(pv?.status || '');
+
+    // Já embalado
+    if (pv?.dataConf) { naoAtendiveis.push({ ...ped, motivo:'Já embalado', statusPV: pv.status }); return; }
+    // Cancelado/suspenso
+    const ENCERRADOS = new Set(['PEDIDO CANCELADO','PEDIDO ENTREGUE','* PEDIDO SUSPENSO *',
+      'PEDIDO ENTREGUE PARCIAL','AG. EMBARQUE','AG. CONFIRMACAO DE ENTREGA']);
+    if (pv && ENCERRADOS.has(normSt(pv.status).replace('ENCIA','ÊNCIA').replace('ÃO','ÃO'))) {
+      naoAtendiveis.push({ ...ped, motivo: pv.status, statusPV: pv.status }); return;
+    }
+
+    // Verificar itens não-brinde contra estoque
+    const itensSemEstoque = ped.itens.filter(it => !it.brinde && !temEstoqueUrg(it.produto, it.cor, it.tam));
+
+    if (itensSemEstoque.length === 0) {
+      atendiveis.push({ ...ped, statusPV: pv?.status || '—' });
+    } else {
+      naoAtendiveis.push({ ...ped, motivo:'Itens sem estoque', itensFaltantes: itensSemEstoque, statusPV: pv?.status || '—' });
+    }
+  });
+
+  URG_RESULT = { atendiveis, naoAtendiveis, naoEncontrados, modoLocal };
+  urgRenderResult();
+}
+
+function urgRenderResult() {
+  const { atendiveis, naoAtendiveis, naoEncontrados, modoLocal } = URG_RESULT;
+  const total = atendiveis.length + naoAtendiveis.length + naoEncontrados.length;
+  const modoLabel = modoLocal ? 'localização' : 'saldo';
+
+  let html = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+      <div class="kpi" style="border-top-color:var(--ok);padding:12px">
+        <div class="kv" style="color:var(--ok);font-size:28px">${atendiveis.length}</div>
+        <div class="kl">Atendíveis agora</div>
+        <div class="kp">${total ? (atendiveis.length/total*100).toFixed(1)+'%' : ''}</div>
+      </div>
+      <div class="kpi r" style="padding:12px">
+        <div class="kv" style="font-size:28px">${naoAtendiveis.length}</div>
+        <div class="kl">Não atendíveis</div>
+        <div class="kp">itens faltantes ou status</div>
+      </div>
+      <div class="kpi" style="border-top-color:#6b7280;padding:12px">
+        <div class="kv" style="font-size:28px;color:#6b7280">${naoEncontrados.length}</div>
+        <div class="kl">Não encontrados</div>
+        <div class="kp">não estão no CSV de vendas</div>
+      </div>
+    </div>`;
+
+  if (atendiveis.length) {
+    html += `<div class="sec" style="margin-top:0">✅ Atendíveis agora (${modoLabel})</div>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:6px">
+      ${atendiveis.map(p => `<span style="background:#dcfce7;color:#15803d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">
+        NVS-${p.num}${p.express?' ⚡':''}
+      </span>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="urgGerarPDF()" style="font-size:12px">🖨 Imprimir folhas de separação (PDF)</button>
+      <button class="btn btn-secondary" onclick="urgExportarAtend()" style="font-size:12px">⬇ Exportar lista atendíveis</button>
+    </div>`;
+  }
+
+  // Não atendíveis com itens faltantes
+  const travados = naoAtendiveis.filter(p => p.itensFaltantes?.length);
+  if (travados.length) {
+    html += `<div class="sec">❌ Não atendíveis — itens faltantes</div>
+    <div class="table-wrap scroll" style="margin-bottom:14px;max-height:200px;overflow-y:auto">
+      <table><thead><tr>
+        <th>Pedido</th><th>Status PV03</th><th>Itens faltantes</th>
+      </tr></thead><tbody>
+      ${travados.map(p => `<tr>
+        <td><strong>NVS-${p.num}</strong>${p.express?' ⚡':''}</td>
+        <td style="font-size:11px;color:var(--txt-s)">${p.statusPV}</td>
+        <td>${p.itensFaltantes.map(it=>`${it.produto} ${it.cor} ${it.tam}`).join(' · ')}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+
+    // Consolidado de faltantes
+    const consol = {};
+    travados.forEach(p => {
+      p.itensFaltantes.forEach(it => {
+        const k = `${it.produto}|${it.cor}|${it.tam}`;
+        if (!consol[k]) consol[k] = { produto:it.produto, cor:it.cor, tam:it.tam, qtde:0, pedidos:0 };
+        consol[k].qtde += it.qtde;
+        consol[k].pedidos++;
+      });
+    });
+    const top = Object.values(consol).sort((a,b) => b.pedidos - a.pedidos);
+    html += `<div class="sec">📋 Consolidado de itens faltantes (para o estoquista)</div>
+    <div class="table-wrap scroll" style="margin-bottom:10px">
+      <table><thead><tr>
+        <th>Produto</th><th>Cor</th><th>Tam</th>
+        <th class="num">Peças necessárias</th><th class="num">Pedidos impactados</th>
+      </tr></thead><tbody>
+      ${top.map(c=>`<tr>
+        <td><strong>${c.produto}</strong></td><td>${c.cor}</td><td>${c.tam}</td>
+        <td class="num" style="font-weight:700;color:#dc2626">${c.qtde}</td>
+        <td class="num">${c.pedidos}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>
+    <button class="btn btn-secondary" onclick="urgExportarFaltantes()" style="font-size:12px">⬇ Exportar faltantes para o estoquista</button>`;
+  }
+
+  // Outros não atendíveis (por status)
+  const porStatus = naoAtendiveis.filter(p => !p.itensFaltantes?.length && p.motivo !== 'Não encontrado');
+  if (porStatus.length) {
+    html += `<div class="sec" style="margin-top:14px">⚠ Não atendíveis por status</div>
+    <div class="table-wrap scroll" style="max-height:150px;overflow-y:auto">
+      <table><thead><tr><th>Pedido</th><th>Motivo</th></tr></thead><tbody>
+      ${porStatus.map(p=>`<tr>
+        <td>NVS-${p.num}</td><td style="font-size:11px">${p.motivo}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  if (naoEncontrados.length) {
+    html += `<div style="margin-top:10px;font-size:12px;color:#6b7280">
+      Não encontrados no CSV de vendas: ${naoEncontrados.map(n=>'NVS-'+n).join(', ')}
+    </div>`;
+  }
+
+  document.getElementById('urg-result').innerHTML = html;
+}
+
+async function urgGerarPDF() {
+  const { atendiveis } = URG_RESULT;
+  if (!atendiveis.length) { alert('Nenhum pedido atendível para imprimir.'); return; }
+  if (typeof jspdf === 'undefined' && !window.jspdf) {
+    alert('Biblioteca jsPDF não carregada. Verifique a conexão.'); return;
+  }
+
+  const btn = event.target; btn.disabled=true; btn.textContent='Gerando PDF...';
+
+  try {
+    // Montar orders para layoutPreFat
+    const orders = atendiveis.map(ped => {
+      const lines = ped.itens.map(it => {
+        const tg = urgLocTag(it.produto, it.tam, it.cor);
+        return { de:it.produto, c:it.cor, t:it.tam, q:it.qtde, b:it.brinde, forceEnv:false, tg };
+      });
+      // Número do pré-faturamento = número do pedido
+      return {
+        prefat: 'NVS-' + ped.num,
+        pedido: 'NVS-' + ped.num,
+        cliente: ped.cliente || '',
+        data: ped.data ? ped.data.slice(8,10)+'/'+ped.data.slice(5,7)+'/'+ped.data.slice(0,4) : '',
+        express: ped.express,
+        parcialNote: null,
+        lines
+      };
+    });
+
+    // Usar layoutPreFat e gerarPreFatPDF do Analista Faturador (injetados abaixo)
+    const doc = await urgGerarPreFatPDF(orders);
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `urgentes_separacao_${atendiveis.length}ped.pdf`;
+    a.click(); URL.revokeObjectURL(url);
+  } catch(err) {
+    alert('Erro ao gerar PDF: ' + (err?.message || err));
+  } finally {
+    btn.disabled=false; btn.textContent='🖨 Imprimir folhas de separação (PDF)';
+  }
+}
+
+function urgExportarAtend() {
+  const { atendiveis } = URG_RESULT;
+  const rows = atendiveis.map(p => ({
+    'Pedido': 'NVS-'+p.num, 'Data': p.data||'', 'Express': p.express?'SIM':'NÃO',
+    'Status PV03': p.statusPV||'', 'Itens': p.itens.filter(i=>!i.brinde).map(i=>`${i.produto} ${i.cor} ${i.tam}`).join(' | ')
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Atendíveis Urgentes');
+  XLSX.writeFile(wb, 'urgentes_atend.xlsx');
+}
+
+function urgExportarFaltantes() {
+  const { naoAtendiveis } = URG_RESULT;
+  const travados = naoAtendiveis.filter(p => p.itensFaltantes?.length);
+  const consol = {};
+  travados.forEach(p => {
+    p.itensFaltantes.forEach(it => {
+      const k = `${it.produto}|${it.cor}|${it.tam}`;
+      if (!consol[k]) consol[k] = { produto:it.produto, cor:it.cor, tam:it.tam, qtde:0, pedidos:0 };
+      consol[k].qtde += it.qtde; consol[k].pedidos++;
+    });
+  });
+  const rows = Object.values(consol).sort((a,b)=>b.pedidos-a.pedidos).map(c=>({
+    'PRODUTO': c.produto, 'COR': c.cor, 'TAMANHO': c.tam,
+    'PEÇAS NECESSÁRIAS': c.qtde, 'PEDIDOS IMPACTADOS': c.pedidos
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:30},{wch:16},{wch:10},{wch:18},{wch:20}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Faltantes Urgentes');
+  XLSX.writeFile(wb, 'urgentes_faltantes_estoquista.xlsx');
+}
+
+// Funções do Analista Faturador — para geração do PDF de separação
+const C128=["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
+function code128(data){data=String(data||"");let codes,start;
+  if(/^\d+$/.test(data)&&data.length%2===0){start=105;codes=[];for(let i=0;i<data.length;i+=2)codes.push(parseInt(data.substr(i,2),10));}
+  else{start=104;codes=[];for(const ch of data)codes.push(ch.charCodeAt(0)-32);}
+  let sum=start;codes.forEach((c,i)=>sum+=c*(i+1));return [start,...codes,sum%103,106].map(v=>C128[v]).join("");}
+
+function skuKey(de,t,c){return de+'|'+((t||'').trim())+'|'+c;}
+
+function locOf(de,t,c){
+  let v=URG_LOC.get(skuKey(de,t,c));
+  if(v===undefined){const cd=URG_DE2CD.get(de);if(cd)v=URG_LOCC.get(cd+'|'+((t||'').trim())+'|'+c);}   // fallback por CÓDIGO (rename-proof)
+  if(v===undefined)return null;const s=(v||'').trim();return (s==='')?null:v;}
+
+function isEnvSem(loc){const s=(loc||'').trim().toUpperCase();return s==='ENVIAR SEM'||s==='SEM';}
+// tg: {loc, sem(=SEM LOCAL: campo Local vazio ou SKU sem cadastro no ESTQ01 — tem estoque mas sem endereço), env(=ENVIAR SEM/"SEM": enviar o pedido sem o item)}
+
+function locTag(de,t,c){const l=locOf(de,t,c);
+  if(l===null)return{loc:null,sem:true,env:false};
+  if(isEnvSem(l))return{loc:l,sem:false,env:true};
+  return{loc:l,sem:false,env:false};}
+
+function preFatSort(rows){
+  const rank=r=>(r.isBri||r.tg.env||r.fe||r.tg.sem)?1:0;
+  rows.sort((a,b)=>{const ra=rank(a),rb=rank(b);if(ra!==rb)return ra-rb;
+    if(ra===0)return (a.tg.loc||"").localeCompare(b.tg.loc||"","pt-BR",{numeric:true,sensitivity:"base"});
+    const sa=a.isBri?2:((a.tg.env||a.fe)?1:0),sb=b.isBri?2:((b.tg.env||b.fe)?1:0);if(sa!==sb)return sa-sb;
+    return (a.l.de||"").localeCompare(b.l.de||"","pt-BR",{numeric:true,sensitivity:"base"});});
+  return rows;
+}
+
+function drawBarcode(doc,data,x,y,w,h){const pat=code128(data);const total=pat.split("").reduce((a,c)=>a+parseInt(c,10),0);
+  const unit=w/total;let cx=x,bar=true;for(const ch of pat){const ww=parseInt(ch,10)*unit;if(bar){doc.setFillColor(0,0,0);doc.rect(cx,y,ww,h,"F");}cx+=ww;bar=!bar;}}
+
+function layoutPreFat(doc,order,draw){
+  const W=80,M=4,CW=W-2*M;let y=M+3;
+  const sep=()=>{if(draw){doc.setLineWidth(0.2);doc.setLineDashPattern([0.8,0.8],0);doc.line(M,y,W-M,y);doc.setLineDashPattern([],0);}y+=3;};
+  doc.setFont("helvetica","normal");doc.setFontSize(7);
+  const cliLines=doc.splitTextToSize("Cliente: "+(order.cliente||""),CW);
+  const locW=14, xLoc=M, xName=M+locW+1, xCor=44, corW=(M+CW-13)-xCor-1, nameW=xCor-1-xName, xTam=M+CW-12;
+  doc.setFontSize(9);
+  const rows=order.lines.map(l=>{const tg=locTag(l.de,l.t,l.c);const isBri=!!l.b;const fe=!isBri&&!!l.forceEnv;const locTxt=isBri?"BRINDE":((fe||tg.env)?"ENVIAR SEM":(tg.sem?"SEM LOCAL":(tg.loc||"")));
+    return{nm:doc.splitTextToSize(l.de||"",nameW),cr:doc.splitTextToSize(l.c||"",corW),lc:doc.splitTextToSize(locTxt,locW),tg,l,isBri,fe};});
+  // ordem da rota: itens COM local primeiro (alfanumérico do Local); sem local, ENVIAR SEM e brinde por último
+  preFatSort(rows);
+  sep();
+  if(draw){doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("Número do pré-faturamento",W/2,y,{align:"center"});}y+=4;
+  if(draw)drawBarcode(doc,order.prefat,M+5,y,CW-10,8);y+=8;
+  y+=3.8;if(draw){doc.setFontSize(8);doc.text(String(order.prefat||""),W/2,y,{align:"center"});}y+=5;
+  if(order.express){
+    if(draw){doc.setFillColor(0,0,0);doc.rect(M,y-4.2,CW,9,'F');doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(15);doc.text("PEDIDO EXPRESS",W/2,y+2,{align:"center"});doc.setTextColor(0,0,0);}
+    y+=8.5;
+  }
+  if(draw){doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.text("Pedido: "+(order.pedido||""),M,y);}y+=5;
+  if(draw){doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text("Data: "+(order.data||""),M,y);}y+=4;
+  cliLines.forEach(t=>{if(draw)doc.text(t,M,y);y+=3.7;});y+=1;
+  if(order.parcialNote){if(draw){doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.text(order.parcialNote,M,y);}y+=4.6;}
+  sep();
+  if(draw){doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("Local",xLoc,y);doc.text("Produto",xName,y);doc.text("Cor",xCor,y);doc.text("Tam",xTam,y);doc.text("Qt",W-M,y,{align:"right"});}y+=4.8;
+  rows.forEach(r=>{const body=Math.max(r.nm.length,r.cr.length,r.lc.length)*4;
+    const noteH=(r.isBri||r.tg.sem||r.fe)?3.8:0;const rh=Math.max(body,4.2)+noteH+1.4;
+    if(draw){doc.setFontSize(9);
+      doc.setFont("helvetica","bold");r.lc.forEach((t,k)=>doc.text(t,xLoc,y+k*4));
+      doc.setFont("helvetica","normal");r.nm.forEach((t,k)=>doc.text(t,xName,y+k*4));
+      r.cr.forEach((t,k)=>doc.text(t,xCor,y+k*4));
+      doc.setFont("helvetica","bold");doc.text(r.l.t||"",xTam,y);doc.text(String(r.l.q),W-M,y,{align:"right"});
+      if(r.isBri){doc.setFont("helvetica","italic");doc.setFontSize(7);doc.text(">> brinde - incluir no pacote",xLoc,y+body+2.4);}
+      else if(r.fe){doc.setFont("helvetica","italic");doc.setFontSize(7);doc.text(">> sem estoque - enviar sem este item",xLoc,y+body+2.4);}
+      else if(r.tg.sem){doc.setFont("helvetica","italic");doc.setFontSize(7);doc.text(">> sem local cadastrado - conferir no estoque",xLoc,y+body+2.4);}}
+    y+=rh;});
+  sep();
+  const tot=order.lines.reduce((a,l)=>a+l.q,0);
+  if(draw){doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.text("Qtd Total: "+tot,W-M,y,{align:"right"});}y+=5;
+  y+=2;if(draw){doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("OBSERVAÇÕES",M,y);}y+=4;if(draw)doc.line(M,y,W-M,y);y+=6;
+  if(draw){doc.text("Responsável",M,y);}y+=4;if(draw)doc.line(M,y,W-M,y);y+=2;
+  y+=M;return y;
+}
+
+async function gerarPreFatPDF(orders,prog){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:[80,120]});
+  for(let i=0;i<orders.length;i++){
+    const h=layoutPreFat(doc,orders[i],false);doc.addPage([80,h]);layoutPreFat(doc,orders[i],true);
+    if(i%40===0){prog&&prog((i+1)/orders.length);await new Promise(r=>setTimeout(r));}
+  }
+  doc.deletePage(1);return doc;
+}
+
+function ordKey(o){o=String(o).trim();const m=o.match(/(\d{2,})\s*$/);return m?m[1]:o.toUpperCase();}
+
+function normDateISO(v){
+  v=String(v==null?'':v).trim();if(!v)return v;
+  if(/^\d{4}-\d{2}-\d{2}/.test(v))return v;
+  const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(v);
+  if(m)return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);
+  const n=parseFloat(v);
+  if(!isNaN(n)&&n>20000&&n<70000&&/^\d+(\.\d+)?$/.test(v)){
+    const d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);return d.toISOString().slice(0,10);}
+  return v;
+}
+
+async function urgGerarPreFatPDF(orders) {
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:[80,120]});
+  // locTag override para usar URG_LOC
+  const _origLocTag = window._fatLocTag || locTag;
+  for (let i = 0; i < orders.length; i++) {
+    // Recalcular lines com locTag correto
+    orders[i].lines = orders[i].lines.map(l => ({
+      ...l,
+      tg: urgLocTag(l.de, l.t, l.c)
+    }));
+    const h = layoutPreFat(doc, orders[i], false);
+    doc.addPage([80, h]);
+    layoutPreFat(doc, orders[i], true);
+    if (i % 20 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  doc.deletePage(1);
+  return doc;
+}
+
 </script>
 
 <!-- painel de análise de pedidos afetados (renderizado sob demanda) -->
